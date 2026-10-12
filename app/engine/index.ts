@@ -1,8 +1,9 @@
 export * from './types'
 export { parseSvg } from './svg-parse'
 export { generateTray, validateParams } from './tray'
+export { buildCutLayers, cutFilename, cutLayersToSvg, type CutLayerInput } from './cut-export'
 export { validateMesh } from './mesh-validate'
-export { meshToBinaryStl, parseBinaryStl, stlFilename } from './stl'
+export { meshToBinaryStl, parseBinaryStl, stlFilename, lidStlFilename } from './stl'
 export { loadManifold } from './manifold-loader'
 export { SAMPLES } from './samples'
 export {

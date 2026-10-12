@@ -132,6 +132,29 @@ describe('tray generation', () => {
   it('all samples produce valid trays', () => {
     for (const s of SAMPLES) expectValid(build(s.svg).result)
   })
+
+  it('internal dividers increase volume and stay watertight', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="60"/></svg>'
+    const base = build(svg, { width: 100, height: 60 })
+    const divided = build(svg, {
+      width: 100,
+      height: 60,
+      dividers: { enabled: true, rows: 2, cols: 3, thickness: 2 }
+    })
+    expectValid(divided.result)
+    expect(divided.result.dividerOutlines!.length).toBe(3)
+    expect(divided.result.validation!.volume).toBeGreaterThan(base.result.validation!.volume)
+  })
+
+  it('lid mesh is watertight when enabled', () => {
+    const { result } = build(sample('rounded-rect'), {
+      lid: { enabled: true, thickness: 2, clearance: 0.3, lipDepth: 5, lipThickness: 2 }
+    })
+    expectValid(result)
+    expect(result.lidMesh).toBeDefined()
+    expect(result.lidValidation!.ok).toBe(true)
+    expect(result.lidBbox!.size[2]).toBeGreaterThan(2)
+  })
 })
 
 describe('svg parsing', () => {

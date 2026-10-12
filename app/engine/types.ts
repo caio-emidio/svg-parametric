@@ -24,6 +24,28 @@ export interface SvgParseResult {
   bounds: { minX: number, minY: number, maxX: number, maxY: number } | null
 }
 
+export interface DividerParams {
+  enabled: boolean
+  /** Number of compartment rows (≥ 1). */
+  rows: number
+  /** Number of compartment columns (≥ 1). */
+  cols: number
+  /** Internal wall thickness; 0 uses `wallThickness`. */
+  thickness: number
+}
+
+export interface LidParams {
+  enabled: boolean
+  /** Flat top panel thickness in mm. */
+  thickness: number
+  /** Radial gap between lid lip and cavity wall in mm. */
+  clearance: number
+  /** How far the lip extends downward into the cavity in mm. */
+  lipDepth: number
+  /** Lip skirt thickness in mm; 0 uses `wallThickness`. */
+  lipThickness: number
+}
+
 export interface TrayParams {
   /** Target outer width in mm (before `scale`). */
   width: number
@@ -38,6 +60,25 @@ export interface TrayParams {
   taperAngle: number
   /** External corner radius in mm (0 = off). */
   cornerRadius: number
+  dividers: DividerParams
+  lid: LidParams
+  /** Kerf / beam width for 2D cut export (mm). */
+  cutKerf: number
+}
+
+export const DEFAULT_DIVIDERS: DividerParams = {
+  enabled: false,
+  rows: 2,
+  cols: 2,
+  thickness: 0
+}
+
+export const DEFAULT_LID: LidParams = {
+  enabled: false,
+  thickness: 2,
+  clearance: 0.3,
+  lipDepth: 4,
+  lipThickness: 0
 }
 
 export const DEFAULT_PARAMS: TrayParams = {
@@ -48,7 +89,10 @@ export const DEFAULT_PARAMS: TrayParams = {
   wallThickness: 2,
   bottomThickness: 2,
   taperAngle: 0,
-  cornerRadius: 0
+  cornerRadius: 0,
+  dividers: { ...DEFAULT_DIVIDERS },
+  lid: { ...DEFAULT_LID },
+  cutKerf: 0.15
 }
 
 export interface MeshData {
@@ -79,6 +123,15 @@ export interface BBox {
   size: [number, number, number]
 }
 
+/** 2D cut layers for laser/CNC export (mm, z-up footprint). */
+export interface CutLayer {
+  id: string
+  label: string
+  /** CSS colour for SVG stroke. */
+  stroke: string
+  contours: Contour[]
+}
+
 export interface TrayResult {
   ok: boolean
   errors: Issue[]
@@ -86,6 +139,15 @@ export interface TrayResult {
   mesh?: MeshData
   bbox?: BBox
   validation?: MeshValidation
-  /** Bottom outline polygons (mm), handy for debugging / 2D views. */
+  /** Outer bottom outline polygons (mm). */
   outline?: Contour[]
+  /** Cavity opening at the bottom (mm). */
+  cavityOutline?: Contour[]
+  /** Divider footprints at the bottom (mm). */
+  dividerOutlines?: Contour[][]
+  lidMesh?: MeshData
+  lidValidation?: MeshValidation
+  lidBbox?: BBox
+  /** Layers for 2D cut export (includes kerf when built for export). */
+  cutLayers?: CutLayer[]
 }

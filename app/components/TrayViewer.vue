@@ -5,9 +5,14 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box, Grid3x3, Home, Layers, Loader2, Upload } from 'lucide-vue-next'
 import Button from '~/components/ui/Button.vue'
 import { SAMPLES } from '~/engine'
-import { useTrayApp } from '~/composables/useTrayApp'
+import { useTrayApp, type PreviewPart } from '~/composables/useTrayApp'
 
 const app = useTrayApp()
+const previewOptions: { id: PreviewPart, label: string }[] = [
+  { id: 'tray', label: 'Tray' },
+  { id: 'lid', label: 'Lid' },
+  { id: 'both', label: 'Both' }
+]
 const host = ref<HTMLDivElement>()
 const wireframe = ref(false)
 const labels = ref<{ text: string, x: number, y: number, show: boolean }[]>([
@@ -19,6 +24,7 @@ let scene: THREE.Scene
 let camera: THREE.PerspectiveCamera
 let controls: OrbitControls
 let mesh: THREE.Mesh | null = null
+let lidMesh: THREE.Mesh | null = null
 let grid: THREE.GridHelper | null = null
 let floor: THREE.Mesh
 let dimLines: THREE.LineSegments | null = null
@@ -79,10 +85,7 @@ onMounted(() => {
     updateLabels()
   }
   loop()
-  watch(() => app.result.value, (r) => {
-    if (r?.mesh) setMesh(r.mesh.positions, r.mesh.indices)
-    else clearMesh()
-  }, { immediate: true })
+  watch([() => app.result.value, () => app.previewPart.value], () => syncPreview(), { immediate: true })
 })
 
 function resize() {
@@ -94,16 +97,21 @@ function resize() {
   camera.updateProjectionMatrix()
 }
 
+function disposeMeshObj(m: THREE.Mesh | null) {
+  if (!m) return
+  m.geometry.dispose()
+  ;(m.material as THREE.Material).dispose()
+  scene.remove(m)
+}
+
 function clearMesh() {
-  if (mesh) { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); scene.remove(mesh); mesh = null }
+  disposeMeshObj(mesh); mesh = null
+  disposeMeshObj(lidMesh); lidMesh = null
   if (grid) { scene.remove(grid); grid.geometry.dispose(); grid = null }
   if (dimLines) { scene.remove(dimLines); dimLines.geometry.dispose(); dimLines = null }
 }
 
-function setMesh(positions: Float32Array, indices: Uint32Array) {
-  const first = !mesh
-  if (mesh) { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); scene.remove(mesh) }
-  // The exact export mesh, un-indexed so every face gets a flat normal (crisp CAD look).
+function buildMesh(positions: Float32Array, indices: Uint32Array, color: number) {
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3))
   g.setIndex(new THREE.BufferAttribute(indices.slice(), 1))
@@ -111,17 +119,22 @@ function setMesh(positions: Float32Array, indices: Uint32Array) {
   g.dispose()
   flat.computeVertexNormals()
   flat.computeBoundingBox()
-  const mat = new THREE.MeshStandardMaterial({ color: 0xe8a35c, roughness: 0.55, metalness: 0.05, wireframe: wireframe.value })
-  mesh = new THREE.Mesh(flat, mat)
-  mesh.castShadow = true
-  mesh.receiveShadow = true
-  scene.add(mesh)
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, wireframe: wireframe.value })
+  const m = new THREE.Mesh(flat, mat)
+  m.castShadow = true
+  m.receiveShadow = true
+  return m
+}
 
-  const bb = flat.boundingBox!
-  bb.getSize(size); min.copy(bb.min)
-  bb.getCenter(center)
+function fitCamera(first: boolean) {
+  const group = new THREE.Box3()
+  if (mesh) group.expandByObject(mesh)
+  if (lidMesh) group.expandByObject(lidMesh)
+  if (group.isEmpty()) return
+  group.getSize(size); min.copy(group.min)
+  group.getCenter(center)
   radius = Math.max(size.length() / 2, 10)
-  rebuildGrid(bb)
+  rebuildGrid(group)
   const key = scene.getObjectByName('key') as THREE.DirectionalLight
   key.shadow.camera.left = -radius * 1.6; key.shadow.camera.right = radius * 1.6
   key.shadow.camera.top = radius * 1.6; key.shadow.camera.bottom = -radius * 1.6
@@ -131,6 +144,26 @@ function setMesh(positions: Float32Array, indices: Uint32Array) {
   key.position.copy(center).add(new THREE.Vector3(radius * 0.8, -radius * 1.2, radius * 2.2))
   if (first) preset('iso')
   else controls.target.copy(center)
+}
+
+function syncPreview() {
+  const r = app.result.value
+  const part = app.previewPart.value
+  const first = !mesh && !lidMesh
+  disposeMeshObj(mesh); mesh = null
+  disposeMeshObj(lidMesh); lidMesh = null
+  const showTray = part !== 'lid' && r?.mesh
+  const showLid = (part === 'lid' || part === 'both') && r?.lidMesh
+  if (showTray) {
+    mesh = buildMesh(r!.mesh!.positions, r!.mesh!.indices, 0xe8a35c)
+    scene.add(mesh)
+  }
+  if (showLid) {
+    lidMesh = buildMesh(r!.lidMesh!.positions, r!.lidMesh!.indices, 0x7eb8da)
+    scene.add(lidMesh)
+  }
+  if (mesh || lidMesh) fitCamera(first)
+  else clearMesh()
 }
 
 function rebuildGrid(bb: THREE.Box3) {
@@ -191,7 +224,11 @@ function preset(kind: 'top' | 'front' | 'side' | 'iso') {
   controls.update()
 }
 
-watch(wireframe, w => { if (mesh) (mesh.material as THREE.MeshStandardMaterial).wireframe = w })
+watch(wireframe, w => {
+  for (const m of [mesh, lidMesh]) {
+    if (m) (m.material as THREE.MeshStandardMaterial).wireframe = w
+  }
+})
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
@@ -215,7 +252,7 @@ onBeforeUnmount(() => {
 
     <template v-for="(l, i) in labels" :key="i">
       <span
-        v-show="l.show && app.result.value?.mesh" class="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-amber-300"
+        v-show="l.show && (app.result.value?.mesh || app.result.value?.lidMesh)" class="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-amber-300"
         :style="{ left: l.x + 'px', top: l.y + 'px' }"
       >{{ ['W', 'D', 'H'][i] }} {{ l.text }}</span>
     </template>
@@ -225,6 +262,17 @@ onBeforeUnmount(() => {
       <Button variant="ghost" size="sm" @click="preset('front')">Front</Button>
       <Button variant="ghost" size="sm" @click="preset('side')">Side</Button>
       <Button variant="ghost" size="sm" @click="preset('iso')"><Box class="size-3" />Iso</Button>
+      <span class="mx-1 h-4 w-px bg-border" />
+      <template v-if="app.params.lid.enabled && app.result.value?.lidMesh">
+        <span class="mx-1 h-4 w-px bg-border" />
+        <Button
+          v-for="opt in previewOptions"
+          :key="opt.id"
+          :variant="app.previewPart.value === opt.id ? 'default' : 'ghost'"
+          size="sm"
+          @click="app.previewPart.value = opt.id"
+        >{{ opt.label }}</Button>
+      </template>
       <span class="mx-1 h-4 w-px bg-border" />
       <Button :variant="wireframe ? 'default' : 'ghost'" size="sm" @click="wireframe = !wireframe"><Grid3x3 class="size-3" />Wireframe</Button>
       <Button variant="ghost" size="sm" @click="preset('iso')"><Home class="size-3" />Reset camera</Button>

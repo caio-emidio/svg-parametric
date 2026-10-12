@@ -1,8 +1,13 @@
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import {
+  DEFAULT_DIVIDERS,
+  DEFAULT_LID,
   DEFAULT_PARAMS,
   SAMPLES,
+  cutFilename,
+  cutLayersToSvg,
   defaultImageToSvgParams,
+  lidStlFilename,
   meshToBinaryStl,
   parseSvg,
   stlFilename,
@@ -17,6 +22,7 @@ import type { ImageTraceWorkerResult } from '~/workers/image-trace.worker'
 export type GenStatus = 'idle' | 'generating' | 'ready' | 'error'
 export type ExportStatus = 'idle' | 'exporting' | 'done' | 'error'
 export type TraceStatus = 'idle' | 'tracing' | 'error'
+export type PreviewPart = 'tray' | 'lid' | 'both'
 
 const IMAGE_TYPES = /^image\/(png|jpeg|webp)$/i
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i
@@ -25,7 +31,12 @@ const IMAGE_EXT = /\.(png|jpe?g|webp)$/i
 const svgName = ref<string>('')
 const parsed = shallowRef<SvgParseResult | null>(null)
 const selectedIds = ref<string[]>([])
-const params = reactive<TrayParams>({ ...DEFAULT_PARAMS })
+const params = reactive<TrayParams>({
+  ...DEFAULT_PARAMS,
+  dividers: { ...DEFAULT_DIVIDERS },
+  lid: { ...DEFAULT_LID }
+})
+const previewPart = ref<PreviewPart>('tray')
 const lockAspect = ref(true)
 const status = ref<GenStatus>('idle')
 const result = shallowRef<TrayResult | null>(null)
@@ -127,7 +138,11 @@ function dispatch() {
   if (inFlight !== null) { pending = true; return }
   status.value = 'generating'
   inFlight = ++nextJob
-  ensureWorker().postMessage({ id: inFlight, shapes: JSON.parse(JSON.stringify(selectedShapes.value)), params: { ...params } })
+  ensureWorker().postMessage({
+    id: inFlight,
+    shapes: JSON.parse(JSON.stringify(selectedShapes.value)),
+    params: JSON.parse(JSON.stringify(params)) as TrayParams
+  })
 }
 
 function schedule(delay = 250) {
@@ -139,7 +154,7 @@ function schedule(delay = 250) {
 function start() {
   if (started) return
   started = true
-  watch(() => ({ ...params }), () => schedule())
+  watch(params, () => schedule(), { deep: true })
   watch(selectedIds, () => { syncHeight(); schedule(60) }, { deep: true })
 }
 
@@ -255,7 +270,7 @@ function clearSvg() {
 }
 
 function resetParams() {
-  Object.assign(params, DEFAULT_PARAMS)
+  Object.assign(params, { ...DEFAULT_PARAMS, dividers: { ...DEFAULT_DIVIDERS }, lid: { ...DEFAULT_LID } })
   lockAspect.value = true
   syncHeight()
 }
@@ -293,6 +308,18 @@ function exportSvg() {
   }
 }
 
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  return a.download
+}
+
 function exportStl() {
   const r = result.value
   if (!r?.ok || !r.mesh || !r.validation) {
@@ -303,16 +330,57 @@ function exportStl() {
   exportStatus.value = 'exporting'
   try {
     const buf = meshToBinaryStl(r.mesh, r.validation, svgName.value)
-    const url = URL.createObjectURL(new Blob([buf], { type: 'model/stl' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = stlFilename(svgName.value, { width: r.bbox!.size[0], height: r.bbox!.size[1], wallHeight: r.bbox!.size[2] })
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    const name = downloadBlob(
+      stlFilename(svgName.value, { width: r.bbox!.size[0], height: r.bbox!.size[1], wallHeight: r.bbox!.size[2] }),
+      new Blob([buf], { type: 'model/stl' })
+    )
     exportStatus.value = 'done'
-    exportMessage.value = `Exported ${a.download} (${(buf.byteLength / 1024).toFixed(0)} KB, ${r.validation.triangles} triangles)`
+    exportMessage.value = `Exported ${name} (${(buf.byteLength / 1024).toFixed(0)} KB, ${r.validation.triangles} triangles)`
+  } catch (e) {
+    exportStatus.value = 'error'
+    exportMessage.value = (e as Error).message
+  }
+}
+
+function exportLidStl() {
+  const r = result.value
+  if (!r?.lidMesh || !r.lidValidation?.ok) {
+    exportStatus.value = 'error'
+    exportMessage.value = 'Export blocked: there is no valid lid.'
+    return
+  }
+  exportStatus.value = 'exporting'
+  try {
+    const buf = meshToBinaryStl(r.lidMesh, r.lidValidation, `${svgName.value} lid`)
+    const bb = r.lidBbox!
+    const name = downloadBlob(
+      lidStlFilename(svgName.value, { width: bb.size[0], height: bb.size[1], lidHeight: bb.size[2] }),
+      new Blob([buf], { type: 'model/stl' })
+    )
+    exportStatus.value = 'done'
+    exportMessage.value = `Exported ${name} (${(buf.byteLength / 1024).toFixed(0)} KB)`
+  } catch (e) {
+    exportStatus.value = 'error'
+    exportMessage.value = (e as Error).message
+  }
+}
+
+function exportCutSvg() {
+  const r = result.value
+  if (!r?.ok || !r.cutLayers?.length || !r.bbox) {
+    exportStatus.value = 'error'
+    exportMessage.value = 'Export blocked: no cut geometry is available.'
+    return
+  }
+  exportStatus.value = 'exporting'
+  try {
+    const text = cutLayersToSvg(r.cutLayers, { width: r.bbox.size[0], height: r.bbox.size[1] })
+    const name = downloadBlob(
+      cutFilename(svgName.value, r.bbox.size[0], r.bbox.size[1]),
+      new Blob([text], { type: 'image/svg+xml' })
+    )
+    exportStatus.value = 'done'
+    exportMessage.value = `Exported ${name} (${r.cutLayers.length} layer(s), kerf ${params.cutKerf} mm)`
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -324,6 +392,8 @@ export function useTrayApp() {
   return {
     svgName, parsed, selectedIds, params, lockAspect, status, result, exportStatus, exportMessage, loadError,
     traceStatus, traceWarnings, inputWarnings, generatedSvgText, fromImage, sourceRasterUrl, imageTraceParams, lastImageFile,
-    selectedShapes, aspect, setWidth, setHeight, loadFile, loadSample, clearSvg, resetParams, regenerate, retraceImage, exportStl, exportSvg
+    previewPart,
+    selectedShapes, aspect, setWidth, setHeight, loadFile, loadSample, clearSvg, resetParams, regenerate, retraceImage,
+    exportStl, exportLidStl, exportCutSvg, exportSvg
   }
 }

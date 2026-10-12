@@ -46,7 +46,14 @@ export function parseBinaryStl(buf: ArrayBuffer): { triangles: number, normals: 
   return { triangles, normals, positions }
 }
 
+function slugBase(svgName: string | undefined): string {
+  return (svgName ?? 'tray').replace(/\.svg$/i, '').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tray'
+}
+
 export function stlFilename(svgName: string | undefined, p: { width: number, height: number, wallHeight: number }): string {
-  const base = (svgName ?? 'tray').replace(/\.svg$/i, '').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tray'
-  return `${base}_tray_${Math.round(p.width)}x${Math.round(p.height)}x${Math.round(p.wallHeight)}mm.stl`
+  return `${slugBase(svgName)}_tray_${Math.round(p.width)}x${Math.round(p.height)}x${Math.round(p.wallHeight)}mm.stl`
+}
+
+export function lidStlFilename(svgName: string | undefined, p: { width: number, height: number, lidHeight: number }): string {
+  return `${slugBase(svgName)}_lid_${Math.round(p.width)}x${Math.round(p.height)}x${Math.round(p.lidHeight)}mm.stl`
 }

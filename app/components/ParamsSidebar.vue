@@ -9,6 +9,8 @@ import { useTrayApp } from '~/composables/useTrayApp'
 
 const app = useTrayApp()
 const p = app.params
+const d = p.dividers
+const lid = p.lid
 </script>
 
 <template>
@@ -44,6 +46,38 @@ const p = app.params
         <NumberField v-model="p.cornerRadius" label="Corner rounding" :min="0" :max="200" :slider-max="30" :step="0.5" />
       </div>
 
+      <div class="space-y-3">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Compartments</h2>
+        <div class="flex items-center justify-between">
+          <Label for="dividers">Internal dividers</Label>
+          <Switch id="dividers" v-model="d.enabled" />
+        </div>
+        <template v-if="d.enabled">
+          <NumberField v-model="d.rows" label="Rows" :min="1" :max="20" :slider-max="6" :step="1" />
+          <NumberField v-model="d.cols" label="Columns" :min="1" :max="20" :slider-max="6" :step="1" />
+          <NumberField v-model="d.thickness" label="Divider thickness" unit="mm" :min="0" :max="20" :slider-max="6" :step="0.1" />
+        </template>
+      </div>
+
+      <div class="space-y-3">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Lid</h2>
+        <div class="flex items-center justify-between">
+          <Label for="lid">Generate lid</Label>
+          <Switch id="lid" v-model="lid.enabled" />
+        </div>
+        <template v-if="lid.enabled">
+          <NumberField v-model="lid.thickness" label="Lid thickness" :min="0.2" :max="20" :slider-max="6" :step="0.1" />
+          <NumberField v-model="lid.clearance" label="Clearance" :min="0" :max="2" :slider-max="1" :step="0.05" />
+          <NumberField v-model="lid.lipDepth" label="Lip depth" :min="0.5" :max="100" :slider-max="20" :step="0.5" />
+          <NumberField v-model="lid.lipThickness" label="Lip thickness" :min="0" :max="10" :slider-max="4" :step="0.1" />
+        </template>
+      </div>
+
+      <div class="space-y-3">
+        <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">2D cut export</h2>
+        <NumberField v-model="p.cutKerf" label="Kerf / beam width" :min="0" :max="2" :slider-max="0.5" :step="0.01" unit="mm" />
+      </div>
+
       <div class="space-y-2">
         <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Actions</h2>
         <div class="grid grid-cols-2 gap-2">
@@ -53,7 +87,25 @@ const p = app.params
           </Button>
         </div>
         <Button class="w-full" :disabled="!app.result.value?.ok || app.status.value === 'generating'" data-testid="export" @click="app.exportStl">
-          <Download class="size-3.5" />Export STL
+          <Download class="size-3.5" />Export tray STL
+        </Button>
+        <Button
+          v-if="lid.enabled"
+          class="w-full"
+          variant="outline"
+          :disabled="!app.result.value?.lidValidation?.ok || app.status.value === 'generating'"
+          @click="app.exportLidStl"
+        >
+          <Download class="size-3.5" />Export lid STL
+        </Button>
+        <Button
+          class="w-full"
+          variant="outline"
+          :disabled="!app.result.value?.ok || app.status.value === 'generating'"
+          data-testid="export-cut"
+          @click="app.exportCutSvg"
+        >
+          <Download class="size-3.5" />Export SVG (2D cut)
         </Button>
       </div>
     </div>

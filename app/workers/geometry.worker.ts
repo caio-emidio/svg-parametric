@@ -15,5 +15,6 @@ self.onmessage = async (ev: MessageEvent<Job>) => {
   }
   const transfer: Transferable[] = []
   if (result.mesh) transfer.push(result.mesh.positions.buffer, result.mesh.indices.buffer)
+  if (result.lidMesh) transfer.push(result.lidMesh.positions.buffer, result.lidMesh.indices.buffer)
   ;(self as unknown as Worker).postMessage({ id, result }, transfer)
 }

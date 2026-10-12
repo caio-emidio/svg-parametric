@@ -9,7 +9,10 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
   vite: {
     plugins: [tailwindcss()],
-    worker: { format: 'es' }
+    worker: { format: 'es' },
+    optimizeDeps: {
+      include: ['esm-potrace-wasm']
+    }
   },
   app: {
     head: {

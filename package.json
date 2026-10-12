@@ -14,6 +14,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "esm-potrace-wasm": "^0.5.1",
     "fast-xml-parser": "^5.11.2",
     "lucide-vue-next": "^1.0.0",
     "manifold-3d": "^3.5.4",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.186.0",
+    "happy-dom": "^21.0.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
     "vue-tsc": "^3.3.13"

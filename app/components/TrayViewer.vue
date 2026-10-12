@@ -102,7 +102,7 @@ function clearMesh() {
 
 function setMesh(positions: Float32Array, indices: Uint32Array) {
   const first = !mesh
-  if (mesh) { mesh.geometry.dispose(); scene.remove(mesh) }
+  if (mesh) { mesh.geometry.dispose(); (mesh.material as THREE.Material).dispose(); scene.remove(mesh) }
   // The exact export mesh, un-indexed so every face gets a flat normal (crisp CAD look).
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3))

@@ -20,10 +20,12 @@ export function validateParams(p: TrayParams): Issue[] {
   if (!finite) { bad('BAD_PARAMS', 'All parameters must be valid numbers.'); return e }
   if (p.width < 1 || p.height < 1 || p.scale <= 0) bad('BAD_DIMENSIONS', 'Width and height must be at least 1 mm and scale must be positive.')
   if (p.width * p.scale > MAX_DIM || p.height * p.scale > MAX_DIM) bad('BAD_DIMENSIONS', `Dimensions are limited to ${MAX_DIM} mm.`)
-  if (p.wallHeight < 1 || p.wallHeight > MAX_DIM) bad('BAD_WALL_HEIGHT', `Wall height must be between 1 and ${MAX_DIM} mm.`)
+  if (p.wallHeight < 0 || p.wallHeight > MAX_DIM) bad('BAD_WALL_HEIGHT', `Wall height must be between 0 and ${MAX_DIM} mm.`)
   if (p.wallThickness < MIN_FEATURE) bad('BAD_WALL_THICKNESS', `Wall thickness must be at least ${MIN_FEATURE} mm.`)
   if (p.bottomThickness < MIN_FEATURE) bad('BAD_BOTTOM', `Bottom thickness must be at least ${MIN_FEATURE} mm.`)
-  if (p.bottomThickness >= p.wallHeight) bad('BOTTOM_TOO_THICK', 'Bottom thickness must be smaller than the wall height, otherwise there is no cavity.')
+  if (p.wallHeight > 0 && p.bottomThickness >= p.wallHeight) bad('BOTTOM_TOO_THICK', 'Bottom thickness must be smaller than the wall height, otherwise there is no cavity.')
+  if (p.wallHeight === 0 && p.dividers.enabled) bad('BAD_DIVIDERS', 'Compartments require wall height greater than 0.')
+  if (p.wallHeight === 0 && p.lid.enabled) bad('BAD_LID', 'A lid requires wall height greater than 0.')
   if (Math.abs(p.taperAngle) > 45) bad('BAD_TAPER', 'Taper angle must be between -45° and 45°.')
   if (p.cornerRadius < 0) bad('BAD_RADIUS', 'Corner radius cannot be negative.')
   if (p.cutKerf < 0) bad('BAD_KERF', 'Kerf cannot be negative.')
@@ -148,19 +150,7 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
     }
     outer = keep(outer.simplify(Math.min(params.width, params.height) * 1e-5))
 
-    // 4. proper inward offset for the cavity
     const t = params.wallThickness
-    const inner = keep(outer.offset(-t, 'Round'))
-    if (inner.isEmpty() || inner.area() < 1e-6) {
-      return { ok: false, errors: [{ code: 'WALL_TOO_THICK', message: `A wall thickness of ${t} mm leaves no interior: the shape is narrower than ${(2 * t).toFixed(1)} mm everywhere. Reduce the wall thickness or enlarge the shape.` }], warnings }
-    }
-    const reopened = keep(inner.offset(t, 'Round'))
-    const lost = keep(outer.subtract(reopened))
-    const lostFraction = lost.area() / outer.area()
-    if (lostFraction > 0.015) {
-      warnings.push({ code: 'NARROW_FEATURES', message: `Some regions (≈${(lostFraction * 100).toFixed(1)} % of the area) are narrower than 2 × wall thickness (${(2 * t).toFixed(1)} mm) and will be solid instead of hollow. Reduce the wall thickness or enlarge the model.` })
-    }
-    // 5. extrude. Taper scales about the bounding-box centre so the wall grows by ≈ height·tan(angle).
     const H = params.wallHeight, b = params.bottomThickness
     const tan = Math.tan(params.taperAngle * Math.PI / 180)
     const radius = (cs: { area(): number }) => Math.sqrt(cs.area() / Math.PI)
@@ -172,10 +162,31 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
       const solid = keep(centred.extrude(height, 0, 0, [s, s]))
       return keep(solid.translate([mx, my, z]))
     }
-    const outerSolid = around(outer, H, H * tan, 0)
-    const overshoot = 1
-    const cavity = around(inner, H - b + overshoot, (H - b + overshoot) * tan, b)
-    let tray = keep(outerSolid.subtract(cavity))
+
+    let inner: typeof outer
+    let tray: ReturnType<typeof around>
+    if (H === 0) {
+      // Flat silhouette: no walls, thickness comes from bottomThickness only.
+      inner = keep(outer.offset(-t, 'Round'))
+      tray = keep(around(outer, b, b * tan, 0))
+    } else {
+      // 4. proper inward offset for the cavity
+      inner = keep(outer.offset(-t, 'Round'))
+      if (inner.isEmpty() || inner.area() < 1e-6) {
+        return { ok: false, errors: [{ code: 'WALL_TOO_THICK', message: `A wall thickness of ${t} mm leaves no interior: the shape is narrower than ${(2 * t).toFixed(1)} mm everywhere. Reduce the wall thickness or enlarge the shape.` }], warnings }
+      }
+      const reopened = keep(inner.offset(t, 'Round'))
+      const lost = keep(outer.subtract(reopened))
+      const lostFraction = lost.area() / outer.area()
+      if (lostFraction > 0.015) {
+        warnings.push({ code: 'NARROW_FEATURES', message: `Some regions (≈${(lostFraction * 100).toFixed(1)} % of the area) are narrower than 2 × wall thickness (${(2 * t).toFixed(1)} mm) and will be solid instead of hollow. Reduce the wall thickness or enlarge the model.` })
+      }
+      // 5. extrude. Taper scales about the bounding-box centre so the wall grows by ≈ height·tan(angle).
+      const outerSolid = around(outer, H, H * tan, 0)
+      const overshoot = 1
+      const cavity = around(inner, H - b + overshoot, (H - b + overshoot) * tan, b)
+      tray = keep(outerSolid.subtract(cavity))
+    }
 
     const dividerOutlines: Contour[][] = []
     if (params.dividers.enabled && (params.dividers.rows > 1 || params.dividers.cols > 1)) {

@@ -49,7 +49,7 @@ const lid = p.lid
 
       <div class="space-y-3">
         <h2 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{{ t('section.trayGeometry') }}</h2>
-        <NumberField v-model="p.wallHeight" :label="t('field.wallHeight')" :min="1" :max="500" :slider-max="100" :step="0.5" />
+        <NumberField v-model="p.wallHeight" :label="t('field.wallHeight')" :min="0" :max="500" :slider-max="100" :step="0.5" />
         <NumberField v-model="p.wallThickness" :label="t('field.wallThickness')" :min="0.2" :max="50" :slider-max="10" :step="0.1" />
         <NumberField v-model="p.bottomThickness" :label="t('field.bottomThickness')" :min="0.2" :max="50" :slider-max="10" :step="0.1" />
         <NumberField v-model="p.taperAngle" :label="t('field.wallTaper')" unit="°" :min="-45" :max="45" :step="0.5" />

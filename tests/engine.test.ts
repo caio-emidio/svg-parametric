@@ -40,6 +40,14 @@ describe('tray generation', () => {
     expect(result.bbox!.size[0]).toBeCloseTo(100, 1)
   })
 
+  it('zero wall height is a flat plate (silhouette only)', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
+    const { result } = build(svg, { width: 50, height: 30, wallHeight: 0, bottomThickness: 2 })
+    expectValid(result)
+    expect(result.bbox!.size[2]).toBeCloseTo(2, 2)
+    expect(result.validation!.volume).toBeCloseTo(50 * 30 * 2, 0)
+  })
+
   it('rectangle volume matches analytic value', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
     const { result } = build(svg, { width: 50, height: 30, wallHeight: 10, wallThickness: 2, bottomThickness: 3 })

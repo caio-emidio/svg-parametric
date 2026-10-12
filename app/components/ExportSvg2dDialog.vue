@@ -30,24 +30,24 @@ function pick(style: Svg2dExportStyle) {
         <div class="mt-4 space-y-2">
           <button
             type="button"
-            class="flex w-full items-start gap-3 rounded-md border bg-background p-3 text-left transition-colors hover:bg-muted"
-            @click="pick('stroke')"
-          >
-            <PenLine class="mt-0.5 size-4 shrink-0 text-primary" />
-            <span>
-              <span class="block text-xs font-medium">{{ t('exportSvg2d.strokeTitle') }}</span>
-              <span class="mt-0.5 block text-[10px] text-muted-foreground">{{ t('exportSvg2d.strokeHint') }}</span>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="flex w-full items-start gap-3 rounded-md border bg-background p-3 text-left transition-colors hover:bg-muted"
+            class="flex w-full items-start gap-3 rounded-md border border-primary/40 bg-background p-3 text-left transition-colors hover:bg-muted"
             @click="pick('filled')"
           >
             <PaintBucket class="mt-0.5 size-4 shrink-0 text-primary" />
             <span>
               <span class="block text-xs font-medium">{{ t('exportSvg2d.filledTitle') }}</span>
               <span class="mt-0.5 block text-[10px] text-muted-foreground">{{ t('exportSvg2d.filledHint') }}</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="flex w-full items-start gap-3 rounded-md border bg-background p-3 text-left transition-colors hover:bg-muted"
+            @click="pick('stroke')"
+          >
+            <PenLine class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <span>
+              <span class="block text-xs font-medium">{{ t('exportSvg2d.strokeTitle') }}</span>
+              <span class="mt-0.5 block text-[10px] text-muted-foreground">{{ t('exportSvg2d.strokeHint') }}</span>
             </span>
           </button>
         </div>

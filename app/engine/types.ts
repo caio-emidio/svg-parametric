@@ -24,15 +24,30 @@ export interface SvgParseResult {
   bounds: { minX: number, minY: number, maxX: number, maxY: number } | null
 }
 
+export type DividerLayout = 'grid' | 'custom'
+
+export interface CustomDividerLine {
+  id?: string
+  /** Compartment region to split (`root` = full cavity). */
+  regionId?: string
+  orientation: 'horizontal' | 'vertical'
+  /** Position inside the target region, 0–1 from min to max. */
+  t: number
+}
+
 export interface DividerParams {
   enabled: boolean
+  layout: DividerLayout
   /** Number of compartment rows (≥ 1). */
   rows: number
   /** Number of compartment columns (≥ 1). */
   cols: number
   /** Internal wall thickness; 0 uses `wallThickness`. */
   thickness: number
+  customLines: CustomDividerLine[]
 }
+
+export type PieceMode = 'tray' | 'coaster' | 'cookieCutter' | 'stamp' | 'closedBox'
 
 export interface LidParams {
   enabled: boolean
@@ -47,6 +62,8 @@ export interface LidParams {
 }
 
 export interface TrayParams {
+  /** Product template controlling geometry presets and export defaults. */
+  pieceMode: PieceMode
   /** Target outer width in mm (before `scale`). */
   width: number
   /** Target outer height in mm (before `scale`). */
@@ -68,13 +85,19 @@ export interface TrayParams {
   exportLayerHeight: number
   /** Elephant-foot compensation in Bambu 3MF hints (mm). */
   exportElephantFoot: number
+  /** Relief height for stamp mode (mm). */
+  stampDepth: number
+  /** Thin base plate under cookie-cutter walls. */
+  cookieCutterBase: boolean
 }
 
 export const DEFAULT_DIVIDERS: DividerParams = {
   enabled: false,
+  layout: 'grid',
   rows: 2,
   cols: 2,
-  thickness: 0
+  thickness: 0,
+  customLines: []
 }
 
 export const DEFAULT_LID: LidParams = {
@@ -86,6 +109,7 @@ export const DEFAULT_LID: LidParams = {
 }
 
 export const DEFAULT_PARAMS: TrayParams = {
+  pieceMode: 'tray',
   width: 100,
   height: 100,
   scale: 1,
@@ -98,7 +122,9 @@ export const DEFAULT_PARAMS: TrayParams = {
   lid: { ...DEFAULT_LID },
   cutKerf: 0.15,
   exportLayerHeight: 0.2,
-  exportElephantFoot: 0.12
+  exportElephantFoot: 0.12,
+  stampDepth: 3,
+  cookieCutterBase: false
 }
 
 export interface MeshData {
@@ -138,6 +164,26 @@ export interface CutLayer {
   contours: Contour[]
 }
 
+export interface CompartmentCell {
+  width: number
+  depth: number
+}
+
+export interface CompartmentLayout {
+  count: number
+  rows: number
+  cols: number
+  cellWidth: number
+  cellDepth: number
+  varies: boolean
+  minCellWidth?: number
+  maxCellWidth?: number
+  minCellDepth?: number
+  maxCellDepth?: number
+  /** Per-compartment sizes (custom / regional layout). */
+  cells?: CompartmentCell[]
+}
+
 export interface TrayResult {
   ok: boolean
   errors: Issue[]
@@ -156,4 +202,6 @@ export interface TrayResult {
   lidBbox?: BBox
   /** Layers for 2D cut export (includes kerf when built for export). */
   cutLayers?: CutLayer[]
+  /** Compartment cell sizes when internal dividers are enabled. */
+  compartmentLayout?: CompartmentLayout
 }

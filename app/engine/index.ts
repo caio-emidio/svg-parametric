@@ -6,13 +6,39 @@ export {
   buildBambu3mf,
   buildBambu3mfCombined,
   buildBambuTrayLidZip,
+  buildBambuTrayOnlyZip,
   buildSinglePlate3mf,
   DEFAULT_BAMBU_HINTS,
   snapBottomToLayer,
+  single3mfFilename,
   threeMfFilename,
   type Bambu3mfInput,
   type Bambu3mfPrintHints
 } from './bambu-3mf'
+export { applyPieceModeToParams, pieceModePreset, PIECE_MODE_LABELS } from './piece-mode'
+export {
+  createProjectFile,
+  decodeProjectFromUrlHash,
+  encodeProjectUrl,
+  parseProjectFile,
+  projectFilename,
+  projectToJson,
+  PROJECT_FILE_EXT,
+  type ProjectFile
+} from './project'
+export { parseStrokeWidth, strokePolylineToOutline } from './stroke-outline'
+export { computeCompartmentLayout, type InnerBounds } from './compartment-layout'
+export { effectiveDividerLayout, normalizeDividerParams } from './divider-utils'
+export {
+  buildRegionTree,
+  normalizeCustomLine,
+  regionLabel,
+  ROOT_REGION_ID,
+  splittableRegions,
+  splittableRegionsBeforeSplit,
+  type NormRegion,
+  type RegionalWall
+} from './region-tree'
 export { validateMesh } from './mesh-validate'
 export { meshToBinaryStl, parseBinaryStl, stlFilename, lidStlFilename } from './stl'
 export { loadManifold } from './manifold-loader'

@@ -40,6 +40,31 @@ describe('tray generation', () => {
     expect(result.bbox!.size[0]).toBeCloseTo(100, 1)
   })
 
+  it('cookie cutter mode produces a valid ring', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
+    const { result } = build(svg, { pieceMode: 'cookieCutter', width: 50, height: 30, wallHeight: 10, wallThickness: 1, bottomThickness: 0.4, cookieCutterBase: false })
+    expectValid(result)
+    expect(result.bbox!.size[2]).toBeCloseTo(10, 1)
+  })
+
+  it('stamp mode extrudes relief height', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
+    const { result } = build(svg, { pieceMode: 'stamp', width: 50, height: 30, bottomThickness: 4, stampDepth: 3 })
+    expectValid(result)
+    expect(result.bbox!.size[2]).toBeCloseTo(7, 1)
+  })
+
+  it('custom dividers split the cavity', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
+    const { result } = build(svg, {
+      width: 50,
+      height: 30,
+      dividers: { enabled: true, layout: 'custom', rows: 1, cols: 1, thickness: 1, customLines: [{ regionId: 'root', orientation: 'vertical', t: 0.5 }] }
+    })
+    expectValid(result)
+    expect(result.dividerOutlines!.length).toBeGreaterThan(0)
+  })
+
   it('zero wall height is a flat plate (silhouette only)', () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="50" height="30"/></svg>'
     const { result } = build(svg, { width: 50, height: 30, wallHeight: 0, bottomThickness: 2 })
@@ -170,7 +195,14 @@ describe('svg parsing', () => {
     expect(parseSvg('').errors[0]!.code).toBe('EMPTY_SVG')
     expect(parseSvg('<svg><g></svg>').errors[0]!.code).toBe('INVALID_SVG')
     expect(parseSvg('<html></html>').errors[0]!.code).toBe('NOT_SVG')
-    expect(parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 10" fill="none" stroke="red"/></svg>').errors[0]!.code).toBe('NO_CLOSED_PATHS')
+    expect(parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0L10 0" fill="none" stroke="red"/></svg>').errors[0]!.code).toBe('NO_CLOSED_PATHS')
+  })
+
+  it('expands stroke-only paths to filled outlines', () => {
+    const p = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="20" height="10" fill="none" stroke="black" stroke-width="2"/></svg>')
+    expect(p.errors).toEqual([])
+    expect(p.shapes).toHaveLength(1)
+    expect(p.warnings.some(w => w.code === 'STROKE_EXPANDED')).toBe(true)
   })
 
   it('warns on unsupported features and ignores scripts', () => {

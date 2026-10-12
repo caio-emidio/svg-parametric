@@ -4,11 +4,21 @@ import {
   DEFAULT_LID,
   DEFAULT_PARAMS,
   SAMPLES,
+  applyPieceModeToParams,
   buildBambu3mf,
+  buildBambuTrayOnlyZip,
+  buildSinglePlate3mf,
+  createProjectFile,
   cutFilename,
   cutLayersToSvg,
+  decodeProjectFromUrlHash,
+  encodeProjectUrl,
+  parseProjectFile,
+  projectFilename,
+  projectToJson,
   type Svg2dExportStyle,
   snapBottomToLayer,
+  single3mfFilename,
   threeMfFilename,
   defaultImageToSvgParams,
   lidStlFilename,
@@ -17,9 +27,14 @@ import {
   stlFilename,
   type ImageToSvgParams,
   type Issue,
+  type PieceMode,
   type SvgParseResult,
   type TrayParams,
-  type TrayResult
+  type TrayResult,
+  normalizeDividerParams,
+  ROOT_REGION_ID,
+  splittableRegions,
+  splittableRegionsBeforeSplit
 } from '~/engine'
 import type { ImageTraceWorkerResult } from '~/workers/image-trace.worker'
 import { useI18n } from '~/composables/useI18n'
@@ -72,6 +87,10 @@ let started = false
 let traceWorker: Worker | null = null
 let traceJobId = 0
 let traceInFlight: number | null = null
+let tracePreserveDimensions = false
+let urlProjectLoaded = false
+let sourceRasterBase64 = ''
+let sourceRasterMime = ''
 
 const selectedShapes = computed(() => parsed.value?.shapes.filter(s => selectedIds.value.includes(s.id)) ?? [])
 
@@ -126,7 +145,7 @@ function ensureTraceWorker() {
       return
     }
     traceStatus.value = 'idle'
-    applyTracedSvg(ev.data.svg, ev.data.selectedShapeIds, ev.data.traceWarnings)
+    applyTracedSvg(ev.data.svg, ev.data.selectedShapeIds, ev.data.traceWarnings, tracePreserveDimensions)
   }
   traceWorker.onerror = (e) => {
     traceInFlight = null
@@ -143,6 +162,7 @@ function dispatch() {
   if (inFlight !== null) { pending = true; return }
   status.value = 'generating'
   inFlight = ++nextJob
+  normalizeDividerParams(params.dividers)
   ensureWorker().postMessage({
     id: inFlight,
     shapes: JSON.parse(JSON.stringify(selectedShapes.value)),
@@ -159,15 +179,91 @@ function schedule(delay = 250) {
 function start() {
   if (started) return
   started = true
+  normalizeDividerParams(params.dividers)
+  if (params.dividers.enabled) normalizeDividers()
   watch(params, () => schedule(), { deep: true })
   watch(selectedIds, () => { syncHeight(); schedule(60) }, { deep: true })
+  if (import.meta.client && !urlProjectLoaded) {
+    urlProjectLoaded = true
+    tryLoadProjectFromUrl()
+  }
+}
+
+function applyProject(project: ReturnType<typeof createProjectFile>) {
+  Object.assign(params, {
+    ...DEFAULT_PARAMS,
+    ...project.params,
+    dividers: { ...DEFAULT_DIVIDERS, ...project.params.dividers, customLines: [...(project.params.dividers.customLines ?? [])] },
+    lid: { ...DEFAULT_LID, ...project.params.lid }
+  })
+  lockAspect.value = project.lockAspect
+  if (project.imageTraceParams) Object.assign(imageTraceParams, project.imageTraceParams)
+  sourceRasterBase64 = project.sourceRasterBase64 ?? ''
+  sourceRasterMime = project.sourceRasterMime ?? ''
+  if (sourceRasterBase64 && sourceRasterMime) {
+    sourceRasterUrl.value = `data:${sourceRasterMime};base64,${sourceRasterBase64}`
+  }
+  loadSvgText(project.svgText, project.svgName, {
+    selectedIds: project.selectedIds,
+    fromImage: project.fromImage,
+    fitDimensions: false
+  })
+}
+
+function tryLoadProjectFromUrl() {
+  const decoded = decodeProjectFromUrlHash(location.hash)
+  if (!decoded.ok) return
+  applyProject(decoded.project)
+}
+
+function buildCurrentProject() {
+  const text = generatedSvgText.value
+  if (!text) return null
+  return createProjectFile({
+    svgText: text,
+    svgName: svgName.value,
+    selectedIds: selectedIds.value,
+    params: JSON.parse(JSON.stringify(params)) as TrayParams,
+    lockAspect: lockAspect.value,
+    fromImage: fromImage.value,
+    imageTraceParams: fromImage.value ? { ...imageTraceParams } : undefined,
+    sourceRasterBase64: sourceRasterBase64 || undefined,
+    sourceRasterMime: sourceRasterMime || undefined
+  })
+}
+
+const round = (n: number) => Math.round(n * 100) / 100
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
+
+/** Longest side of the selection becomes 100 mm; keeps SVG proportions in width/height. */
+function fitDimensionsFromSelection() {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const s of selectedShapes.value) for (const c of s.contours) for (const [x, y] of c) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+  }
+  const w0 = maxX - minX, h0 = maxY - minY
+  if (!(w0 > 0) || !(h0 > 0)) return
+  const ref = 100
+  if (w0 >= h0) {
+    params.width = round(ref)
+    params.height = round(ref * h0 / w0)
+  } else {
+    params.height = round(ref)
+    params.width = round(ref * w0 / h0)
+  }
 }
 
 function syncHeight() {
   if (lockAspect.value) params.height = round(params.width / aspect.value)
 }
-
-const round = (n: number) => Math.round(n * 100) / 100
 
 function setWidth(w: number) {
   params.width = w
@@ -182,7 +278,11 @@ function svgNameFromImage(name: string): string {
   return name.replace(IMAGE_EXT, '') + '.svg'
 }
 
-function loadSvgText(text: string, name: string, opts?: { selectedIds?: string[], traceWarnings?: Issue[], fromImage?: boolean }) {
+function loadSvgText(
+  text: string,
+  name: string,
+  opts?: { selectedIds?: string[], traceWarnings?: Issue[], fromImage?: boolean, fitDimensions?: boolean }
+) {
   start()
   const p = parseSvg(text)
   svgName.value = name
@@ -195,23 +295,29 @@ function loadSvgText(text: string, name: string, opts?: { selectedIds?: string[]
   if (!opts?.fromImage) {
     lastImageFile.value = null
     revokeRasterUrl()
+    sourceRasterBase64 = ''
+    sourceRasterMime = ''
   }
   selectedIds.value = opts?.selectedIds?.length ? opts.selectedIds : p.shapes.map(s => s.id)
+  if (opts?.fitDimensions !== false) fitDimensionsFromSelection()
+  else if (lockAspect.value) syncHeight()
   if (!p.shapes.length) status.value = 'error'
   else schedule(60)
   exportStatus.value = 'idle'
   exportMessage.value = ''
 }
 
-function applyTracedSvg(svg: string, selectedShapeIds: string[], warnings: Issue[]) {
+function applyTracedSvg(svg: string, selectedShapeIds: string[], warnings: Issue[], preserveDimensions: boolean) {
   loadSvgText(svg, svgNameFromImage(svgName.value), {
     selectedIds: selectedShapeIds,
     traceWarnings: warnings,
-    fromImage: true
+    fromImage: true,
+    fitDimensions: !preserveDimensions
   })
 }
 
-async function traceImageFile(file: File) {
+async function traceImageFile(file: File, opts?: { preserveDimensions?: boolean }) {
+  tracePreserveDimensions = opts?.preserveDimensions ?? false
   start()
   traceStatus.value = 'tracing'
   loadError.value = null
@@ -224,6 +330,8 @@ async function traceImageFile(file: File) {
   revokeRasterUrl()
   sourceRasterUrl.value = URL.createObjectURL(file)
   const buffer = await file.arrayBuffer()
+  sourceRasterBase64 = arrayBufferToBase64(buffer)
+  sourceRasterMime = file.type || 'application/octet-stream'
   const id = ++traceJobId
   traceInFlight = id
   ensureTraceWorker().postMessage(
@@ -272,12 +380,114 @@ function clearSvg() {
   fromImage.value = false
   lastImageFile.value = null
   revokeRasterUrl()
+  sourceRasterBase64 = ''
+  sourceRasterMime = ''
+}
+
+function setPieceMode(mode: PieceMode) {
+  applyPieceModeToParams(params, mode)
+  if (selectedShapes.value.length) schedule(60)
+}
+
+function normalizeDividers() {
+  normalizeDividerParams(params.dividers)
+  if (!params.dividers.enabled) return
+  if (params.pieceMode === 'stamp' || params.pieceMode === 'cookieCutter' || params.pieceMode === 'coaster') {
+    applyPieceModeToParams(params, 'tray')
+  }
+  if (params.wallHeight <= 0) {
+    params.wallHeight = DEFAULT_PARAMS.wallHeight
+  }
+  if (params.bottomThickness >= params.wallHeight) {
+    params.bottomThickness = Math.max(MIN_FEATURE_MM, params.wallHeight * 0.15)
+  }
+}
+
+const MIN_FEATURE_MM = 0.2
+
+function addCustomDivider(orientation: 'horizontal' | 'vertical', regionId?: string) {
+  normalizeDividerParams(params.dividers)
+  params.dividers.layout = 'custom'
+  const leaves = splittableRegions(params.dividers.customLines)
+  const target = regionId ?? leaves[0]?.id ?? ROOT_REGION_ID
+  params.dividers.customLines.push({
+    id: `split-${Date.now()}`,
+    regionId: target,
+    orientation,
+    t: 0.5
+  })
+}
+
+function customSplitRegionOptions(splitIndex: number) {
+  return splittableRegionsBeforeSplit(params.dividers.customLines, splitIndex)
+}
+
+function removeCustomDivider(index: number) {
+  params.dividers.customLines.splice(index, 1)
+}
+
+async function saveProjectFile() {
+  const { t } = useI18n()
+  const project = buildCurrentProject()
+  if (!project) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('export.noSvg')
+    return
+  }
+  exportStatus.value = 'exporting'
+  try {
+    const name = downloadBlob(projectFilename(svgName.value), new Blob([projectToJson(project)], { type: 'application/json' }))
+    exportStatus.value = 'done'
+    exportMessage.value = t('project.saved', { name })
+  } catch (e) {
+    exportStatus.value = 'error'
+    exportMessage.value = (e as Error).message
+  }
+}
+
+async function loadProjectFile(file: File) {
+  const { t } = useI18n()
+  const parsed = parseProjectFile(await file.text())
+  if (!parsed.ok) {
+    loadError.value = { code: 'PROJECT_INVALID', message: parsed.error }
+    return
+  }
+  applyProject(parsed.project)
+  exportStatus.value = 'done'
+  exportMessage.value = t('project.loaded', { name: file.name })
+}
+
+async function copyShareLink() {
+  const { t } = useI18n()
+  const project = buildCurrentProject()
+  if (!project) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('export.noSvg')
+    return
+  }
+  const hash = encodeProjectUrl(project)
+  if (hash.length > 120_000) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('project.linkTooLarge')
+    return
+  }
+  const url = `${location.origin}${location.pathname}${hash}`
+  try {
+    await navigator.clipboard.writeText(url)
+    history.replaceState(null, '', hash)
+    exportStatus.value = 'done'
+    exportMessage.value = t('project.linkCopied')
+  } catch {
+    exportStatus.value = 'error'
+    exportMessage.value = t('project.linkCopyFailed')
+  }
 }
 
 function resetParams() {
-  Object.assign(params, { ...DEFAULT_PARAMS, dividers: { ...DEFAULT_DIVIDERS }, lid: { ...DEFAULT_LID } })
+  Object.assign(params, { ...DEFAULT_PARAMS, dividers: { ...DEFAULT_DIVIDERS, customLines: [] }, lid: { ...DEFAULT_LID } })
   lockAspect.value = true
-  syncHeight()
+  if (selectedShapes.value.length) fitDimensionsFromSelection()
+  else syncHeight()
 }
 
 function regenerate() { schedule(0) }
@@ -285,7 +495,7 @@ function regenerate() { schedule(0) }
 async function retraceImage() {
   const f = lastImageFile.value
   if (!f) return
-  await traceImageFile(f)
+  await traceImageFile(f, { preserveDimensions: true })
 }
 
 function exportSvg() {
@@ -385,24 +595,25 @@ function exportBambu3mf() {
     exportMessage.value = t('export.noTray')
     return
   }
-  if (!params.lid.enabled || !r.lidMesh || !r.lidValidation?.ok || !r.lidBbox) {
-    exportStatus.value = 'error'
-    exportMessage.value = t('export.needLidFor3mf')
-    return
-  }
   exportStatus.value = 'exporting'
   try {
     const layer = params.exportLayerHeight
     const snapped = snapBottomToLayer(params.bottomThickness, layer)
-    const buf = buildBambu3mf({
+    const hasLid = params.lid.enabled && r.lidMesh && r.lidValidation?.ok && r.lidBbox
+    const input = {
       tray: { mesh: r.mesh, validation: r.validation, name: 'Tray', bbox: r.bbox },
-      lid: { mesh: r.lidMesh, validation: r.lidValidation, name: 'Lid', bbox: r.lidBbox },
       params: { bottomThickness: params.bottomThickness },
       hints: { layerHeightMm: layer, elephantFootMm: params.exportElephantFoot },
       projectTitle: svgName.value
-    })
+    }
+    const buf = hasLid
+      ? buildBambu3mf({
+          ...input,
+          lid: { mesh: r.lidMesh!, validation: r.lidValidation!, name: 'Lid', bbox: r.lidBbox! }
+        })
+      : buildBambuTrayOnlyZip(input)
     const name = downloadBlob(
-      threeMfFilename(svgName.value),
+      threeMfFilename(svgName.value, !!hasLid),
       new Blob([buf], { type: 'application/zip' })
     )
     exportStatus.value = 'done'
@@ -410,7 +621,29 @@ function exportBambu3mf() {
     const bottomHint = snapped !== params.bottomThickness
       ? t('export.bottomHint', { mm: snapped, layers: layerCount, layer })
       : ''
-    exportMessage.value = t('export.exportedBambu', { name, bottomHint })
+    exportMessage.value = hasLid
+      ? t('export.exportedBambu', { name, bottomHint })
+      : t('export.exportedBambuTrayOnly', { name, bottomHint })
+  } catch (e) {
+    exportStatus.value = 'error'
+    exportMessage.value = (e as Error).message
+  }
+}
+
+function exportTray3mf() {
+  const { t } = useI18n()
+  const r = result.value
+  if (!r?.ok || !r.mesh || !r.validation || !r.bbox) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('export.noTray')
+    return
+  }
+  exportStatus.value = 'exporting'
+  try {
+    const buf = buildSinglePlate3mf(r.mesh, 'Model', r.bbox, 128)
+    const name = downloadBlob(single3mfFilename(svgName.value), new Blob([buf], { type: 'model/3mf' }))
+    exportStatus.value = 'done'
+    exportMessage.value = t('export.exported3mf', { name })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -427,7 +660,12 @@ function exportCutSvg(style: Svg2dExportStyle) {
   }
   exportStatus.value = 'exporting'
   try {
-    const text = cutLayersToSvg(r.cutLayers, { width: r.bbox.size[0], height: r.bbox.size[1] }, style)
+    const text = cutLayersToSvg(
+      r.cutLayers,
+      { width: r.bbox.size[0], height: r.bbox.size[1] },
+      style,
+      style === 'filled' ? r.outline : undefined
+    )
     const name = downloadBlob(
       cutFilename(svgName.value, r.bbox.size[0], r.bbox.size[1], style),
       new Blob([text], { type: 'image/svg+xml' })
@@ -453,6 +691,7 @@ export function useTrayApp() {
     traceStatus, traceWarnings, inputWarnings, generatedSvgText, fromImage, sourceRasterUrl, imageTraceParams, lastImageFile,
     previewPart,
     selectedShapes, aspect, setWidth, setHeight, loadFile, loadSample, clearSvg, resetParams, regenerate, retraceImage,
-    exportStl, exportLidStl, exportBambu3mf, exportCutSvg, exportSvg
+    setPieceMode, normalizeDividers, addCustomDivider, removeCustomDivider, customSplitRegionOptions, saveProjectFile, loadProjectFile, copyShareLink,
+    exportStl, exportLidStl, exportBambu3mf, exportTray3mf, exportCutSvg, exportSvg
   }
 }

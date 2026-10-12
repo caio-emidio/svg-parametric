@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser'
 import type { Contour, FillRule, Issue, SvgParseResult, SvgShape, Vec2 } from './types'
 import { IDENTITY, multiply, parseTransform, type Matrix } from './transform'
 import { flattenPath } from './flatten'
+import { parseStrokeWidth, strokePolylineToOutline } from './stroke-outline'
 
 /**
  * Parses SVG text into closed polygon contours.
@@ -43,7 +44,14 @@ export function parseSvg(text: string): SvgParseResult {
   if (!root) return fail('NOT_SVG', 'The file does not contain an <svg> root element.')
 
   // Collect the first pass: raw paths with metadata, so curve tolerance can depend on overall extent.
-  interface Raw { id: string, label: string, subpaths: { d?: string, points?: Vec2[], closed: boolean, matrix: Matrix }[], fillRule: FillRule }
+  interface Raw {
+    id: string
+    label: string
+    subpaths: { d?: string, points?: Vec2[], closed: boolean, matrix: Matrix }[]
+    fillRule: FillRule
+    strokeOnly?: boolean
+    strokeWidth?: number
+  }
   const raws: Raw[] = []
   let counter = 0
 
@@ -65,7 +73,7 @@ export function parseSvg(text: string): SvgParseResult {
     return Number.isFinite(n) ? n : d
   }
 
-  interface Inherited { matrix: Matrix, fill: string, fillRule: FillRule, display: boolean }
+  interface Inherited { matrix: Matrix, fill: string, stroke: string, strokeWidth: number, fillRule: FillRule, display: boolean }
 
   const walk = (nodes: any[], inh: Inherited) => {
     for (const node of nodes) {
@@ -75,9 +83,11 @@ export function parseSvg(text: string): SvgParseResult {
       const children: any[] = Array.isArray(node[tag]) ? node[tag] : []
       const matrix = multiply(inh.matrix, parseTransform(a.transform, n => warn('UNSUPPORTED_TRANSFORM', `Unsupported transform "${n}" ignored.`)))
       const fill = a.fill ?? inh.fill
+      const stroke = a.stroke ?? inh.stroke
+      const strokeWidth = parseStrokeWidth(a['stroke-width'], inh.strokeWidth)
       const fillRule: FillRule = (a['fill-rule'] ?? (inh.fillRule === 'EvenOdd' ? 'evenodd' : 'nonzero')) === 'evenodd' ? 'EvenOdd' : 'NonZero'
       const display = inh.display && a.display !== 'none' && a.visibility !== 'hidden'
-      const next: Inherited = { matrix, fill, fillRule, display }
+      const next: Inherited = { matrix, fill, stroke, strokeWidth, fillRule, display }
 
       if (a.mask || a['clip-path'] || a.filter) warn('UNSUPPORTED_EFFECT', 'Masks, clipping paths and filters are not supported and are ignored.')
 
@@ -104,7 +114,9 @@ export function parseSvg(text: string): SvgParseResult {
       const id = a.id || `${tag}-${++counter}`
       const label = a.id ? `${a.id} (${tag})` : `${tag} ${counter}`
       const filled = fill !== 'none'
+      const stroked = stroke !== 'none' && stroke !== undefined && stroke !== ''
       let raw: Raw | null = null
+      let strokeOnly = false
 
       switch (tag) {
         case 'path':
@@ -118,13 +130,17 @@ export function parseSvg(text: string): SvgParseResult {
         }
         case 'polyline': {
           const pts = pointsOf(a.points)
-          if (!filled) { warn('OPEN_PATH', `Open polyline "${id}" with no fill was skipped.`); break }
-          warn('OPEN_PATH_CLOSED', 'Open polylines/paths with a fill were closed automatically.')
-          raw = { id, label, fillRule, subpaths: [{ points: pts, closed: true, matrix }] }
+          if (!filled && !stroked) { warn('OPEN_PATH', `Open polyline "${id}" with no fill was skipped.`); break }
+          if (filled) warn('OPEN_PATH_CLOSED', 'Open polylines/paths with a fill were closed automatically.')
+          raw = { id, label, fillRule, subpaths: [{ points: pts, closed: false, matrix }] }
           break
         }
-        case 'line':
-          warn('OPEN_PATH', 'Lines are open paths and were skipped.'); break
+        case 'line': {
+          const x1 = num(a.x1), y1 = num(a.y1), x2 = num(a.x2), y2 = num(a.y2)
+          if (!stroked) { warn('OPEN_PATH', 'Lines are open paths and were skipped.'); break }
+          raw = { id, label, fillRule, subpaths: [{ points: [[x1, y1], [x2, y2]], closed: false, matrix }] }
+          break
+        }
         case 'rect': {
           const x = num(a.x), y = num(a.y), w = num(a.width), h = num(a.height)
           if (w <= 0 || h <= 0) break
@@ -149,17 +165,19 @@ export function parseSvg(text: string): SvgParseResult {
       }
       if (raw) {
         if (!filled) {
-          // stroke-only shapes have no interior to turn into a tray
-          warn('STROKE_ONLY', `Shape "${id}" has fill="none" (stroke only) and was skipped. Strokes are not supported; convert strokes to paths.`)
-          continue
+          if (!stroked) {
+            warn('STROKE_ONLY', `Shape "${id}" has no fill and no stroke and was skipped.`)
+            continue
+          }
+          strokeOnly = true
         }
-        raws.push(raw)
+        raws.push({ ...raw, strokeOnly, strokeWidth: strokeOnly ? strokeWidth : 0 })
       }
       if (children.length) walk(children, next)
     }
   }
 
-  walk([root], { matrix: IDENTITY, fill: 'black', fillRule: 'NonZero', display: true })
+  walk([root], { matrix: IDENTITY, fill: 'black', stroke: 'none', strokeWidth: 1, fillRule: 'NonZero', display: true })
 
   // Rough extent from control points for choosing a flattening tolerance.
   let extent = 0
@@ -174,15 +192,23 @@ export function parseSvg(text: string): SvgParseResult {
   const shapes: SvgShape[] = []
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   let openClosed = false
+  let strokeExpanded = false
   for (const r of raws) {
     const contours: Contour[] = []
+    const halfStroke = (r.strokeWidth ?? 0) / 2
     for (const s of r.subpaths) {
       const subs = s.d
         ? flattenPath(s.d, s.matrix, tolerance)
         : [{ points: (s.points ?? []).map(p => [s.matrix[0] * p[0] + s.matrix[2] * p[1] + s.matrix[4], s.matrix[1] * p[0] + s.matrix[3] * p[1] + s.matrix[5]] as Vec2), closed: s.closed }]
       for (const sub of subs) {
         if (!sub.closed && s.d) openClosed = true
-        const pts = dedupe(sub.points)
+        let pts = dedupe(sub.points)
+        if (r.strokeOnly && halfStroke > 0) {
+          const outline = strokePolylineToOutline(pts, halfStroke, sub.closed || s.closed)
+          if (!outline || outline.length < 3) continue
+          strokeExpanded = true
+          pts = outline
+        }
         if (pts.length < 3 || isFlat(pts)) continue
         if (pts.some(p => !Number.isFinite(p[0]) || !Number.isFinite(p[1]))) {
           errors.push({ code: 'BAD_NUMBERS', message: `Shape "${r.id}" contains invalid coordinates.` })
@@ -199,6 +225,7 @@ export function parseSvg(text: string): SvgParseResult {
     shapes.push({ id: r.id, label: r.label, contours, fillRule: r.fillRule })
   }
   if (openClosed) warn('OPEN_PATH_CLOSED', 'Open subpaths in filled paths were closed automatically (as SVG renderers do for fills).')
+  if (strokeExpanded) warn('STROKE_EXPANDED', 'Stroke-only shapes were converted to filled outlines using the stroke width.')
 
   if (!shapes.length) {
     errors.unshift({ code: 'NO_CLOSED_PATHS', message: 'No usable closed shapes were found. Use filled paths, polygons, rectangles, circles or ellipses.' })

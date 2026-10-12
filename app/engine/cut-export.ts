@@ -51,7 +51,20 @@ function contourToPathD(c: Contour): string {
 /** Stroke = cut lines (laser/CNC). Filled = solid silhouette with holes (print, vinyl, etc.). */
 export type Svg2dExportStyle = 'stroke' | 'filled'
 
-function pathsForStyle(layers: CutLayer[], style: Svg2dExportStyle): string[] {
+function boundsFromContours(contours: Contour[], fallback: { width: number, height: number }) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const c of contours) for (const [x, y] of c) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+  }
+  if (!Number.isFinite(minX)) {
+    const hw = fallback.width / 2, hh = fallback.height / 2
+    return { minX: -hw, minY: -hh, maxX: hw, maxY: hh }
+  }
+  return { minX, minY, maxX, maxY }
+}
+
+function pathsForStyle(layers: CutLayer[], style: Svg2dExportStyle, silhouette?: Contour[]): string[] {
   if (style === 'stroke') {
     const paths: string[] = []
     for (const layer of layers) {
@@ -63,11 +76,9 @@ function pathsForStyle(layers: CutLayer[], style: Svg2dExportStyle): string[] {
     return paths
   }
   const paths: string[] = []
-  const outer = layers.find(l => l.id === 'outer')
-  const cavity = layers.find(l => l.id === 'cavity')
+  const fillContours = silhouette?.length ? silhouette : layers.find(l => l.id === 'outer')?.contours ?? []
   let d = ''
-  if (outer) for (const c of outer.contours) d += contourToPathD(c)
-  if (cavity) for (const c of cavity.contours) d += contourToPathD(c)
+  for (const c of fillContours) d += contourToPathD(c)
   if (d) paths.push(`<path d="${d}" fill="#000000" fill-rule="evenodd" data-style="filled"/>`)
   for (const layer of layers) {
     if (!layer.id.startsWith('divider')) continue
@@ -80,18 +91,21 @@ function pathsForStyle(layers: CutLayer[], style: Svg2dExportStyle): string[] {
 }
 
 /** Serialises cut layers to an SVG document (mm user units, y-up matching the engine). */
-export function cutLayersToSvg(layers: CutLayer[], size: { width: number, height: number }, style: Svg2dExportStyle = 'stroke'): string {
-  let minX = 0, minY = 0, maxX = size.width, maxY = size.height
-  for (const layer of layers) {
-    for (const c of layer.contours) for (const [x, y] of c) {
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x)
-      minY = Math.min(minY, y); maxY = Math.max(maxY, y)
-    }
-  }
+export function cutLayersToSvg(
+  layers: CutLayer[],
+  size: { width: number, height: number },
+  style: Svg2dExportStyle = 'stroke',
+  /** Tray footprint polygons; required for a fully filled silhouette (not just the wall ring). */
+  silhouette?: Contour[]
+): string {
+  const boundsContours: Contour[] = style === 'filled' && silhouette?.length
+    ? [...silhouette, ...layers.flatMap(l => l.id.startsWith('divider') ? l.contours : [])]
+    : layers.flatMap(l => l.contours)
+  const { minX, minY, maxX, maxY } = boundsFromContours(boundsContours, size)
   const pad = 2
   const w = maxX - minX + pad * 2
   const h = maxY - minY + pad * 2
-  const paths = pathsForStyle(layers, style)
+  const paths = pathsForStyle(layers, style, silhouette)
   // Flip y for SVG (y down): transform group
   const tx = -minX + pad
   const ty = maxY + pad

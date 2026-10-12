@@ -14,6 +14,31 @@ const exportLine = computed(() => {
   if (app.exportMessage.value) return app.exportMessage.value
   return t(`export.status.${app.exportStatus.value}`)
 })
+
+const compartmentLine = computed(() => {
+  const c = app.result.value?.compartmentLayout
+  if (!c) return ''
+  if (c.cells?.length) {
+    const sizes = c.cells.map(cell => `${f(cell.width)}×${f(cell.depth)}`).join(' · ')
+    return t('status.compartmentsList', { count: c.count, sizes })
+  }
+  if (c.varies && c.minCellWidth != null && c.maxCellWidth != null && c.minCellDepth != null && c.maxCellDepth != null) {
+    return t('status.compartmentsRange', {
+      count: c.count,
+      wMin: f(c.minCellWidth),
+      wMax: f(c.maxCellWidth),
+      dMin: f(c.minCellDepth),
+      dMax: f(c.maxCellDepth)
+    })
+  }
+  return t('status.compartmentsUniform', {
+    rows: c.rows,
+    cols: c.cols,
+    count: c.count,
+    width: f(c.cellWidth),
+    depth: f(c.cellDepth)
+  })
+})
 </script>
 
 <template>
@@ -26,6 +51,7 @@ const exportLine = computed(() => {
       <span class="flex items-center gap-1.5"><i class="inline-block size-2 rounded-full" :class="statusColor" />{{ statusText }}</span>
       <span :title="t('status.size')">{{ t('status.size') }} {{ f(app.params.width * app.params.scale) }} × {{ f(app.params.height * app.params.scale) }} mm</span>
       <span>{{ t('status.wall') }} {{ f(app.params.wallHeight) }} {{ t('status.heightAbbr') }} / {{ f(app.params.wallThickness) }} {{ t('status.thicknessAbbr') }} mm</span>
+      <span v-if="compartmentLine" :title="t('status.compartmentsTitle')">{{ compartmentLine }}</span>
       <span v-if="bbox">{{ t('status.bbox') }} {{ f(bbox.size[0]) }} × {{ f(bbox.size[1]) }} × {{ f(bbox.size[2]) }} mm</span>
       <span v-if="v" :class="v.ok ? 'text-success' : 'text-destructive'">
         Mesh {{ v.ok ? t('status.meshOk') : t('status.meshInvalid') }} · {{ v.triangles }} {{ t('status.tris') }} · {{ (v.volume / 1000).toFixed(2) }} cm³<template v-if="v.components > 1"> · {{ v.components }} {{ t('status.parts') }}</template>

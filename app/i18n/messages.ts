@@ -23,6 +23,8 @@ export const messages: Record<Locale, Dict> = {
     },
     section: {
       svgInput: 'SVG Input',
+      pieceMode: 'Piece type',
+      project: 'Project',
       dimensions: 'Dimensions',
       trayGeometry: 'Tray Geometry',
       compartments: 'Compartments',
@@ -52,19 +54,43 @@ export const messages: Record<Locale, Dict> = {
       lipThickness: 'Lip thickness',
       kerf: 'Kerf / beam width',
       layerHeightHint: 'Layer height (hint)',
-      elephantFootHint: 'Elephant foot (hint)'
+      elephantFootHint: 'Elephant foot (hint)',
+      pieceMode: 'Template',
+      stampDepth: 'Relief height',
+      cookieCutterBase: 'Thin base plate',
+      dividerGrid: 'Grid',
+      dividerCustom: 'Custom',
+      horizontalDivider: 'Horizontal',
+      verticalDivider: 'Vertical',
+      dividerPosition: 'Position',
+      dividerTarget: 'Split this compartment',
+      dividersNeedTray: 'Compartments switch the piece type to organizer tray and restore wall height.'
     },
     bambu: {
-      hint: 'Export is a ZIP: open *_tray.3mf on plate 1, add plate 2 in Bambu, import *_lid.3mf. See LEIA-ME-Bambu.txt inside the ZIP.'
+      hint: 'Export is a ZIP: open *_tray.3mf on plate 1, add plate 2 in Bambu, import *_lid.3mf. See LEIA-ME-Bambu.txt inside the ZIP.',
+      hintTrayOnly: 'Bambu ZIP works with or without a lid. With a valid lid you get tray + lid 3MFs; otherwise a single-part ZIP.'
     },
     action: {
       reset: 'Reset',
       regenerate: 'Regenerate',
+      saveProject: 'Save project',
+      openProject: 'Open project',
+      copyShareLink: 'Copy share link',
+      addHorizontalDivider: 'H divider',
+      addVerticalDivider: 'V divider',
       exportTrayStl: 'Export tray STL',
       exportLidStl: 'Export lid STL',
       exportCutSvg: 'Export SVG (2D cut)',
       exportSvg2d: 'Export SVG (2D)',
-      exportBambuZip: 'Export Bambu ZIP (tray + lid)'
+      export3mf: 'Export 3MF',
+      exportBambuZip: 'Export Bambu ZIP'
+    },
+    project: {
+      saved: 'Saved {name}',
+      loaded: 'Opened {name}',
+      linkCopied: 'Share link copied to clipboard.',
+      linkCopyFailed: 'Could not copy link.',
+      linkTooLarge: 'Project is too large for a URL link — save a project file instead.'
     },
     input: {
       dropTitle: 'Drag & drop an SVG or silhouette here',
@@ -123,7 +149,11 @@ export const messages: Record<Locale, Dict> = {
       meshInvalid: 'INVALID',
       tris: 'tris',
       parts: 'parts',
-      export: 'Export'
+      export: 'Export',
+      compartmentsTitle: 'Approximate usable compartment size (inner footprint minus dividers)',
+      compartmentsUniform: 'Compartments {rows}×{cols} ({count}): {width} × {depth} mm',
+      compartmentsRange: 'Compartments ({count}): {wMin}–{wMax} × {dMin}–{dMax} mm',
+      compartmentsList: 'Compartments ({count}): {sizes} mm'
     },
     export: {
       status: {
@@ -144,6 +174,8 @@ export const messages: Record<Locale, Dict> = {
       exportedCut: 'Exported {name} ({layers} layer(s), kerf {kerf} mm)',
       exportedFilled: 'Exported {name} (filled silhouette)',
       exportedBambu: 'Exported {name}: open *_tray.3mf, add plate 2, import *_lid.3mf. See LEIA-ME-Bambu.txt.{bottomHint}',
+      exportedBambuTrayOnly: 'Exported {name} (tray only). See LEIA-ME-Bambu.txt.{bottomHint}',
+      exported3mf: 'Exported {name}',
       bottomHint: ' Set bottom thickness to {mm} mm ({layers}× {layer} mm layers) if you see a line at the floor height.',
       unsupportedFile: 'Choose an SVG or a silhouette image (PNG, JPEG, WebP).'
     },
@@ -152,8 +184,8 @@ export const messages: Record<Locale, Dict> = {
       subtitle: 'Choose outline strokes for laser/CNC cutting, or a filled shape for print and other uses.',
       strokeTitle: 'Outline (cut lines)',
       strokeHint: 'Separate stroke paths per layer, with kerf offset.',
-      filledTitle: 'Filled silhouette',
-      filledHint: 'Solid fill with holes (even-odd); good for print, vinyl, or flat plates.',
+      filledTitle: '100% filled',
+      filledHint: 'Solid black shape like the 2D preview (keeps SVG holes as cut-outs).',
       cancel: 'Cancel'
     }
   },
@@ -172,6 +204,8 @@ export const messages: Record<Locale, Dict> = {
     },
     section: {
       svgInput: 'Entrada SVG',
+      pieceMode: 'Tipo de peça',
+      project: 'Projeto',
       dimensions: 'Dimensões',
       trayGeometry: 'Geometria da bandeja',
       compartments: 'Compartimentos',
@@ -201,19 +235,43 @@ export const messages: Record<Locale, Dict> = {
       lipThickness: 'Espessura do lábio',
       kerf: 'Kerf / largura do feixe',
       layerHeightHint: 'Altura de camada (dica)',
-      elephantFootHint: 'Pé de elefante (dica)'
+      elephantFootHint: 'Pé de elefante (dica)',
+      pieceMode: 'Modelo',
+      stampDepth: 'Altura do relevo',
+      cookieCutterBase: 'Chapa fina no fundo',
+      dividerGrid: 'Grade',
+      dividerCustom: 'Livre',
+      horizontalDivider: 'Horizontal',
+      verticalDivider: 'Vertical',
+      dividerPosition: 'Posição',
+      dividerTarget: 'Dividir este compartimento',
+      dividersNeedTray: 'Compartimentos ativam a bandeja organizadora e restauram a altura da parede.'
     },
     bambu: {
-      hint: 'Exporta um ZIP: abra *_tray.3mf na placa 1, adicione placa 2 na Bambu, importe *_lid.3mf. Veja LEIA-ME-Bambu.txt dentro do ZIP.'
+      hint: 'Exporta um ZIP: abra *_tray.3mf na placa 1, adicione placa 2 na Bambu, importe *_lid.3mf. Veja LEIA-ME-Bambu.txt dentro do ZIP.',
+      hintTrayOnly: 'O ZIP Bambu funciona com ou sem tampa. Com tampa válida você recebe bandeja + tampa; senão, um ZIP de peça única.'
     },
     action: {
       reset: 'Restaurar',
       regenerate: 'Regenerar',
+      saveProject: 'Salvar projeto',
+      openProject: 'Abrir projeto',
+      copyShareLink: 'Copiar link',
+      addHorizontalDivider: 'Div. H',
+      addVerticalDivider: 'Div. V',
       exportTrayStl: 'Exportar STL da bandeja',
       exportLidStl: 'Exportar STL da tampa',
       exportCutSvg: 'Exportar SVG (corte 2D)',
       exportSvg2d: 'Exportar SVG (2D)',
-      exportBambuZip: 'Exportar ZIP Bambu (bandeja + tampa)'
+      export3mf: 'Exportar 3MF',
+      exportBambuZip: 'Exportar ZIP Bambu'
+    },
+    project: {
+      saved: 'Salvo {name}',
+      loaded: 'Aberto {name}',
+      linkCopied: 'Link copiado para a área de transferência.',
+      linkCopyFailed: 'Não foi possível copiar o link.',
+      linkTooLarge: 'Projeto grande demais para link — salve um arquivo de projeto.'
     },
     input: {
       dropTitle: 'Arraste um SVG ou silhueta aqui',
@@ -272,7 +330,11 @@ export const messages: Record<Locale, Dict> = {
       meshInvalid: 'INVÁLIDA',
       tris: 'tris',
       parts: 'partes',
-      export: 'Exportação'
+      export: 'Exportação',
+      compartmentsTitle: 'Tamanho útil aproximado de cada compartimento (área interna menos divisórias)',
+      compartmentsUniform: 'Compartimentos {rows}×{cols} ({count}): {width} × {depth} mm',
+      compartmentsRange: 'Compartimentos ({count}): {wMin}–{wMax} × {dMin}–{dMax} mm',
+      compartmentsList: 'Compartimentos ({count}): {sizes} mm'
     },
     export: {
       status: {
@@ -293,6 +355,8 @@ export const messages: Record<Locale, Dict> = {
       exportedCut: 'Exportado {name} ({layers} camada(s), kerf {kerf} mm)',
       exportedFilled: 'Exportado {name} (silhueta preenchida)',
       exportedBambu: 'Exportado {name}: abra *_tray.3mf, adicione placa 2, importe *_lid.3mf. Veja LEIA-ME-Bambu.txt.{bottomHint}',
+      exportedBambuTrayOnly: 'Exportado {name} (só bandeja). Veja LEIA-ME-Bambu.txt.{bottomHint}',
+      exported3mf: 'Exportado {name}',
       bottomHint: ' Ajuste a espessura do fundo para {mm} mm ({layers}× {layer} mm) se aparecer linha na altura do fundo.',
       unsupportedFile: 'Escolha um SVG ou imagem de silhueta (PNG, JPEG, WebP).'
     },
@@ -301,8 +365,8 @@ export const messages: Record<Locale, Dict> = {
       subtitle: 'Contorno para laser/CNC ou forma preenchida para impressão e outros usos.',
       strokeTitle: 'Contorno (linhas de corte)',
       strokeHint: 'Traços por camada, com compensação de kerf.',
-      filledTitle: 'Silhueta preenchida',
-      filledHint: 'Preenchimento sólido com furos (even-odd); ideal para impressão, vinil ou chapas planas.',
+      filledTitle: '100% preenchido',
+      filledHint: 'Forma sólida preta como no preview 2D (furos do SVG viram recortes).',
       cancel: 'Cancelar'
     }
   }

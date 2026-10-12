@@ -4,6 +4,7 @@ import {
   DEFAULT_PARAMS,
   buildBambu3mfCombined,
   buildBambuTrayLidZip,
+  buildBambuTrayOnlyZip,
   generateTray,
   loadManifold,
   parseSvg,
@@ -51,6 +52,20 @@ describe('bambu 3mf export', () => {
     const lidZip = unzipSync(files[lidEntry]!)
     const lidModel = new TextDecoder().decode(lidZip['3D/3dmodel.model'])
     expect(lidModel).toContain('object id="1"')
+  })
+
+  it('tray-only ZIP contains a single 3MF', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="40" height="30"/></svg>'
+    const parsed = parseSvg(svg)
+    const result = generateTray(M, parsed.shapes, { ...DEFAULT_PARAMS, width: 40, height: 30 })
+    expect(result.ok).toBe(true)
+    const zip = buildBambuTrayOnlyZip({
+      tray: { mesh: result.mesh!, validation: result.validation!, name: 'Tray', bbox: result.bbox! },
+      params: { bottomThickness: DEFAULT_PARAMS.bottomThickness }
+    })
+    const files = unzipSync(zip)
+    expect(Object.keys(files).some(n => n.endsWith('.3mf'))).toBe(true)
+    expect(Object.keys(files).some(n => n.endsWith('_lid.3mf'))).toBe(false)
   })
 
   it('combined 3MF uses split Bambu object files', () => {

@@ -256,10 +256,34 @@ function prepareLidMesh(lid: Bambu3mfPart): { mesh: MeshData, bbox: BBox } {
 /**
  * ZIP with tray.3mf + lid.3mf (one object each) — works reliably in Bambu Studio multi-plate workflow.
  */
+export function buildBambuTrayOnlyZip(input: Omit<Bambu3mfInput, 'lid'>): Uint8Array {
+  const hints: Bambu3mfPrintHints = { ...DEFAULT_BAMBU_HINTS, ...input.hints }
+  if (!input.tray.validation.ok) throw new Error('Tray mesh failed validation.')
+  const base = (input.projectTitle ?? 'tray').replace(/\.svg$/i, '').replace(/[^\w.-]+/gi, '_') || 'tray'
+  const tray3mf = buildSinglePlate3mf(input.tray.mesh, 'Tray', input.tray.bbox, hints.bedCenterMm)
+  return zipSync({
+    [`${base}.3mf`]: tray3mf,
+    'LEIA-ME-Bambu.txt': strToU8(buildTrayOnlyHintsText(hints, input.params.bottomThickness))
+  }, { level: 6 })
+}
+
+function buildTrayOnlyHintsText(hints: Bambu3mfPrintHints, bottomMm: number): string {
+  const snapped = snapBottomToLayer(bottomMm, hints.layerHeightMm)
+  const layer = hints.layerHeightMm
+  return [
+    'svg-parametric — Bambu Studio (single part)',
+    '',
+    `Bottom thickness: ${bottomMm} mm (suggested ${snapped} mm @ ${layer} mm/layer)`,
+    '',
+    `layer_height: ${layer}`,
+    `elephant_foot_compensation: ${hints.elephantFootMm}`
+  ].join('\n')
+}
+
 export function buildBambuTrayLidZip(input: Bambu3mfInput): Uint8Array {
   const hints: Bambu3mfPrintHints = { ...DEFAULT_BAMBU_HINTS, ...input.hints }
   if (!input.tray.validation.ok) throw new Error('Tray mesh failed validation.')
-  if (!input.lid?.validation.ok) throw new Error('Lid mesh failed validation.')
+  if (!input.lid?.validation.ok) return buildBambuTrayOnlyZip(input)
 
   const base = (input.projectTitle ?? 'tray').replace(/\.svg$/i, '').replace(/[^\w.-]+/gi, '_') || 'tray'
   const tray3mf = buildSinglePlate3mf(input.tray.mesh, 'Tray', input.tray.bbox, hints.bedCenterMm)
@@ -313,7 +337,12 @@ export function buildBambu3mf(input: Bambu3mfInput): Uint8Array {
   return buildBambuTrayLidZip(input)
 }
 
-export function threeMfFilename(svgName: string | undefined): string {
+export function threeMfFilename(svgName: string | undefined, withLid = true): string {
   const base = (svgName ?? 'tray').replace(/\.svg$/i, '').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tray'
-  return `${base}_bambu_tray_lid.zip`
+  return withLid ? `${base}_bambu_tray_lid.zip` : `${base}_bambu.3mf.zip`
+}
+
+export function single3mfFilename(svgName: string | undefined): string {
+  const base = (svgName ?? 'tray').replace(/\.svg$/i, '').replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tray'
+  return `${base}.3mf`
 }

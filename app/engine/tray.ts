@@ -1,6 +1,9 @@
 import type { BBox, Contour, Issue, MeshData, MeshValidation, SvgShape, TrayParams, TrayResult } from './types'
 import type { ManifoldModule } from './manifold-loader'
 import { buildCutLayers } from './cut-export'
+import { computeCompartmentLayout } from './compartment-layout'
+import { effectiveDividerLayout } from './divider-utils'
+import { buildRegionTree, normalizeCustomLine, splittableRegionsBeforeSplit, wallToMmStrip } from './region-tree'
 import { isSelfIntersecting } from './contours'
 import { validateMesh } from './mesh-validate'
 
@@ -13,7 +16,7 @@ export function validateParams(p: TrayParams): Issue[] {
   const num = (...vals: number[]) => vals.every(v => Number.isFinite(v))
   const finite = num(
     p.width, p.height, p.scale, p.wallHeight, p.wallThickness, p.bottomThickness, p.taperAngle, p.cornerRadius, p.cutKerf,
-    p.dividers.rows, p.dividers.cols, p.dividers.thickness,
+    p.dividers.rows, p.dividers.cols, p.dividers.thickness, p.stampDepth,
     p.lid.thickness, p.lid.clearance, p.lid.lipDepth, p.lid.lipThickness,
     p.exportLayerHeight, p.exportElephantFoot
   )
@@ -24,19 +27,34 @@ export function validateParams(p: TrayParams): Issue[] {
   if (p.wallThickness < MIN_FEATURE) bad('BAD_WALL_THICKNESS', `Wall thickness must be at least ${MIN_FEATURE} mm.`)
   if (p.bottomThickness < MIN_FEATURE) bad('BAD_BOTTOM', `Bottom thickness must be at least ${MIN_FEATURE} mm.`)
   if (p.wallHeight > 0 && p.bottomThickness >= p.wallHeight) bad('BOTTOM_TOO_THICK', 'Bottom thickness must be smaller than the wall height, otherwise there is no cavity.')
+  if (p.pieceMode === 'stamp' && p.stampDepth < MIN_FEATURE) bad('BAD_STAMP', `Stamp relief must be at least ${MIN_FEATURE} mm.`)
+  if (p.pieceMode === 'cookieCutter' && p.wallHeight < MIN_FEATURE) bad('BAD_CUTTER', `Cookie cutter height must be at least ${MIN_FEATURE} mm.`)
   if (p.wallHeight === 0 && p.dividers.enabled) bad('BAD_DIVIDERS', 'Compartments require wall height greater than 0.')
-  if (p.wallHeight === 0 && p.lid.enabled) bad('BAD_LID', 'A lid requires wall height greater than 0.')
+  if (p.wallHeight === 0 && p.lid.enabled && p.pieceMode !== 'closedBox') bad('BAD_LID', 'A lid requires wall height greater than 0.')
   if (Math.abs(p.taperAngle) > 45) bad('BAD_TAPER', 'Taper angle must be between -45° and 45°.')
   if (p.cornerRadius < 0) bad('BAD_RADIUS', 'Corner radius cannot be negative.')
   if (p.cutKerf < 0) bad('BAD_KERF', 'Kerf cannot be negative.')
   if (p.exportLayerHeight < 0.08 || p.exportLayerHeight > 0.4) bad('BAD_EXPORT', 'Export layer height should be between 0.08 and 0.4 mm.')
   if (p.exportElephantFoot < 0 || p.exportElephantFoot > 1) bad('BAD_EXPORT', 'Elephant-foot compensation must be between 0 and 1 mm.')
   if (p.dividers.enabled) {
-    if (p.dividers.rows < 1 || p.dividers.cols < 1 || !Number.isInteger(p.dividers.rows) || !Number.isInteger(p.dividers.cols)) {
-      bad('BAD_DIVIDERS', 'Compartment rows and columns must be integers ≥ 1.')
-    }
+    const layout = effectiveDividerLayout(p.dividers)
     const dt = p.dividers.thickness > 0 ? p.dividers.thickness : p.wallThickness
     if (dt < MIN_FEATURE) bad('BAD_DIVIDER_THICKNESS', `Divider thickness must be at least ${MIN_FEATURE} mm.`)
+    if (layout === 'grid') {
+      if (p.dividers.rows < 1 || p.dividers.cols < 1 || !Number.isInteger(p.dividers.rows) || !Number.isInteger(p.dividers.cols)) {
+        bad('BAD_DIVIDERS', 'Compartment rows and columns must be integers ≥ 1.')
+      }
+    } else {
+      const lines = p.dividers.customLines ?? []
+      for (let i = 0; i < lines.length; i++) {
+        const split = normalizeCustomLine(lines[i]!, i)
+        if (split.t <= 0 || split.t >= 1) bad('BAD_DIVIDERS', 'Custom divider positions must be between 0 and 1 (exclusive).')
+        const targets = splittableRegionsBeforeSplit(lines, i)
+        if (!targets.some(r => r.id === split.regionId)) {
+          bad('BAD_DIVIDERS', `Custom divider ${i + 1} targets a compartment that no longer exists — remove it or pick another region.`)
+        }
+      }
+    }
   }
   if (p.lid.enabled) {
     if (p.lid.thickness < MIN_FEATURE) bad('BAD_LID', `Lid thickness must be at least ${MIN_FEATURE} mm.`)
@@ -58,6 +76,16 @@ function rectContour(minX: number, minY: number, maxX: number, maxY: number): Co
 function csBounds(cs: { bounds(): { min: number[], max: number[] } }) {
   const bb = cs.bounds()
   return { minX: bb.min[0]!, minY: bb.min[1]!, maxX: bb.max[0]!, maxY: bb.max[1]! }
+}
+
+/** Copy cavity footprint before extrusion — Manifold may invalidate the source CrossSection. */
+function cloneCrossSection(
+  CrossSection: ManifoldModule['CrossSection'],
+  keep: <T extends { delete(): void }>(o: T) => T,
+  cs: { toPolygons(): { [i: number]: number }[][] }
+) {
+  const polys = cs.toPolygons().map(p => p.map(v => [v[0]!, v[1]!] as [number, number]))
+  return keep(CrossSection.ofPolygons(polys, 'NonZero'))
 }
 
 function meshFromManifold(m: { getMesh(): { numProp: number, vertProperties: Float32Array | number[], triVerts: Uint32Array | number[] } }): MeshData {
@@ -164,8 +192,27 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
     }
 
     let inner: typeof outer
+    let innerDividerCs: typeof outer | null = null
     let tray: ReturnType<typeof around>
-    if (H === 0) {
+
+    if (params.pieceMode === 'stamp') {
+      const relief = params.stampDepth
+      inner = keep(outer.offset(-t, 'Round'))
+      tray = keep(around(outer, b + relief, (b + relief) * tan, 0))
+    } else if (params.pieceMode === 'cookieCutter') {
+      inner = keep(outer.offset(-t, 'Round'))
+      if (inner.isEmpty() || inner.area() < 1e-6) {
+        return { ok: false, errors: [{ code: 'WALL_TOO_THICK', message: `A wall thickness of ${t} mm leaves no cutting edge: the shape is too narrow.` }], warnings }
+      }
+      const overshoot = 1
+      const outerSolid = around(outer, H, H * tan, 0)
+      const innerVoid = around(inner, H + overshoot, (H + overshoot) * tan, -overshoot / 2)
+      tray = keep(outerSolid.subtract(innerVoid))
+      if (params.cookieCutterBase && b >= MIN_FEATURE) {
+        const base = keep(extrudeFlat(M, outer, b, 0))
+        tray = keep(tray.add(base))
+      }
+    } else if (H === 0) {
       // Flat silhouette: no walls, thickness comes from bottomThickness only.
       inner = keep(outer.offset(-t, 'Round'))
       tray = keep(around(outer, b, b * tan, 0))
@@ -175,6 +222,7 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
       if (inner.isEmpty() || inner.area() < 1e-6) {
         return { ok: false, errors: [{ code: 'WALL_TOO_THICK', message: `A wall thickness of ${t} mm leaves no interior: the shape is narrower than ${(2 * t).toFixed(1)} mm everywhere. Reduce the wall thickness or enlarge the shape.` }], warnings }
       }
+      innerDividerCs = cloneCrossSection(CrossSection, keep, inner)
       const reopened = keep(inner.offset(t, 'Round'))
       const lost = keep(outer.subtract(reopened))
       const lostFraction = lost.area() / outer.area()
@@ -189,28 +237,43 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
     }
 
     const dividerOutlines: Contour[][] = []
-    if (params.dividers.enabled && (params.dividers.rows > 1 || params.dividers.cols > 1)) {
+    if (params.dividers.enabled && H > 0 && params.pieceMode !== 'cookieCutter' && params.pieceMode !== 'stamp') {
+      const cavityCs = innerDividerCs ?? inner
       const dt = params.dividers.thickness > 0 ? params.dividers.thickness : t
-      const { minX: ix0, minY: iy0, maxX: ix1, maxY: iy1 } = csBounds(inner)
+      const { minX: ix0, minY: iy0, maxX: ix1, maxY: iy1 } = csBounds(cavityCs)
       const innerH = H - b
       const dividerSolids: ReturnType<typeof Manifold.cube>[] = []
-      for (let r = 1; r < params.dividers.rows; r++) {
-        const y = iy0 + (iy1 - iy0) * r / params.dividers.rows
-        const strip = keep(CrossSection.ofPolygons([rectContour(ix0, y - dt / 2, ix1, y + dt / 2)], 'Positive'))
-        const clipped = keep(inner.intersect(strip))
+      let expectedDividers = 0
+      const addStrip = (strip: typeof outer) => {
+        const clipped = keep(cavityCs.intersect(strip))
         if (!clipped.isEmpty()) {
           dividerOutlines.push(clipped.toPolygons().map(p => p.map(v => [v[0]!, v[1]!] as [number, number])))
           dividerSolids.push(keep(extrudeFlat(M, clipped, innerH, b)))
         }
       }
-      for (let c = 1; c < params.dividers.cols; c++) {
-        const x = ix0 + (ix1 - ix0) * c / params.dividers.cols
-        const strip = keep(CrossSection.ofPolygons([rectContour(x - dt / 2, iy0, x + dt / 2, iy1)], 'Positive'))
-        const clipped = keep(inner.intersect(strip))
-        if (!clipped.isEmpty()) {
-          dividerOutlines.push(clipped.toPolygons().map(p => p.map(v => [v[0]!, v[1]!] as [number, number])))
-          dividerSolids.push(keep(extrudeFlat(M, clipped, innerH, b)))
+      const cavityBounds = { minX: ix0, minY: iy0, maxX: ix1, maxY: iy1 }
+      const layout = effectiveDividerLayout(params.dividers)
+      if (layout === 'custom') {
+        const { walls } = buildRegionTree(params.dividers.customLines ?? [])
+        expectedDividers = walls.length
+        for (const wall of walls) {
+          const s = wallToMmStrip(wall, cavityBounds, dt)
+          addStrip(keep(CrossSection.ofPolygons([rectContour(s.minX, s.minY, s.maxX, s.maxY)], 'Positive')))
         }
+      } else {
+        if (params.dividers.rows > 1) expectedDividers += params.dividers.rows - 1
+        if (params.dividers.cols > 1) expectedDividers += params.dividers.cols - 1
+        for (let r = 1; r < params.dividers.rows; r++) {
+          const y = iy0 + (iy1 - iy0) * r / params.dividers.rows
+          addStrip(keep(CrossSection.ofPolygons([rectContour(ix0, y - dt / 2, ix1, y + dt / 2)], 'Positive')))
+        }
+        for (let c = 1; c < params.dividers.cols; c++) {
+          const x = ix0 + (ix1 - ix0) * c / params.dividers.cols
+          addStrip(keep(CrossSection.ofPolygons([rectContour(x - dt / 2, iy0, x + dt / 2, iy1)], 'Positive')))
+        }
+      }
+      if (expectedDividers > 0 && dividerSolids.length === 0) {
+        warnings.push({ code: 'DIVIDERS_SKIPPED', message: 'Internal dividers could not be built inside the cavity (try thinner divider walls or a larger shape).' })
       }
       for (const d of dividerSolids) tray = keep(tray.add(d))
     }
@@ -261,6 +324,13 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
 
     const cutLayers = buildCutLayers(M, { outline, cavityOutline, dividerOutlines, kerf: params.cutKerf })
 
+    const { minX: ix0, minY: iy0, maxX: ix1, maxY: iy1 } = csBounds(inner)
+    const compartmentLayout = computeCompartmentLayout(
+      { minX: ix0, minY: iy0, maxX: ix1, maxY: iy1 },
+      params.dividers,
+      t
+    ) ?? undefined
+
     if (!validation.ok) {
       errors.push({ code: 'MESH_INVALID', message: `The generated mesh failed validation (open edges: ${validation.openEdges}, non-manifold edges: ${validation.nonManifoldEdges}, inconsistent edges: ${validation.inconsistentEdges}, degenerate triangles: ${validation.degenerateTriangles}). Export is disabled.` })
     }
@@ -280,7 +350,8 @@ export function generateTray(M: ManifoldModule, shapes: SvgShape[], params: Tray
       lidMesh,
       lidValidation,
       lidBbox,
-      cutLayers
+      cutLayers,
+      compartmentLayout
     }
   } finally {
     for (const o of created.reverse()) { try { o.delete() } catch { /* already freed */ } }

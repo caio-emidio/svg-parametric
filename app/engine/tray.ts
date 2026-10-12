@@ -14,7 +14,8 @@ export function validateParams(p: TrayParams): Issue[] {
   const finite = num(
     p.width, p.height, p.scale, p.wallHeight, p.wallThickness, p.bottomThickness, p.taperAngle, p.cornerRadius, p.cutKerf,
     p.dividers.rows, p.dividers.cols, p.dividers.thickness,
-    p.lid.thickness, p.lid.clearance, p.lid.lipDepth, p.lid.lipThickness
+    p.lid.thickness, p.lid.clearance, p.lid.lipDepth, p.lid.lipThickness,
+    p.exportLayerHeight, p.exportElephantFoot
   )
   if (!finite) { bad('BAD_PARAMS', 'All parameters must be valid numbers.'); return e }
   if (p.width < 1 || p.height < 1 || p.scale <= 0) bad('BAD_DIMENSIONS', 'Width and height must be at least 1 mm and scale must be positive.')
@@ -26,6 +27,8 @@ export function validateParams(p: TrayParams): Issue[] {
   if (Math.abs(p.taperAngle) > 45) bad('BAD_TAPER', 'Taper angle must be between -45° and 45°.')
   if (p.cornerRadius < 0) bad('BAD_RADIUS', 'Corner radius cannot be negative.')
   if (p.cutKerf < 0) bad('BAD_KERF', 'Kerf cannot be negative.')
+  if (p.exportLayerHeight < 0.08 || p.exportLayerHeight > 0.4) bad('BAD_EXPORT', 'Export layer height should be between 0.08 and 0.4 mm.')
+  if (p.exportElephantFoot < 0 || p.exportElephantFoot > 1) bad('BAD_EXPORT', 'Elephant-foot compensation must be between 0 and 1 mm.')
   if (p.dividers.enabled) {
     if (p.dividers.rows < 1 || p.dividers.cols < 1 || !Number.isInteger(p.dividers.rows) || !Number.isInteger(p.dividers.cols)) {
       bad('BAD_DIVIDERS', 'Compartment rows and columns must be integers ≥ 1.')

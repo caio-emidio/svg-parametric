@@ -64,6 +64,10 @@ export interface TrayParams {
   lid: LidParams
   /** Kerf / beam width for 2D cut export (mm). */
   cutKerf: number
+  /** Layer height baked into Bambu 3MF hints (mm). */
+  exportLayerHeight: number
+  /** Elephant-foot compensation in Bambu 3MF hints (mm). */
+  exportElephantFoot: number
 }
 
 export const DEFAULT_DIVIDERS: DividerParams = {
@@ -92,7 +96,9 @@ export const DEFAULT_PARAMS: TrayParams = {
   cornerRadius: 0,
   dividers: { ...DEFAULT_DIVIDERS },
   lid: { ...DEFAULT_LID },
-  cutKerf: 0.15
+  cutKerf: 0.15,
+  exportLayerHeight: 0.2,
+  exportElephantFoot: 0.12
 }
 
 export interface MeshData {

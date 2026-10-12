@@ -2,6 +2,9 @@
 import ParamsSidebar from '~/components/ParamsSidebar.vue'
 import TrayViewer from '~/components/TrayViewer.vue'
 import StatusBar from '~/components/StatusBar.vue'
+import { useI18n } from '~/composables/useI18n'
+
+useI18n()
 </script>
 
 <template>

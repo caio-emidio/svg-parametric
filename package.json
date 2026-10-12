@@ -11,11 +11,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@jscadui/3mf-export": "^0.5.0",
     "@tailwindcss/vite": "^4.3.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "esm-potrace-wasm": "^0.5.1",
     "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3",
     "lucide-vue-next": "^1.0.0",
     "manifold-3d": "^3.5.4",
     "nuxt": "^4.6.1",

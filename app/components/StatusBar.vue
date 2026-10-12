@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useTrayApp } from '~/composables/useTrayApp'
+import { useI18n } from '~/composables/useI18n'
 
 const app = useTrayApp()
+const { t } = useI18n()
 const bbox = computed(() => app.result.value?.bbox)
 const v = computed(() => app.result.value?.validation)
 const f = (n: number) => n.toFixed(1)
-const statusText = computed(() => ({ idle: 'Idle', generating: 'Generating…', ready: 'Model ready', error: 'Invalid geometry' })[app.status.value])
+const statusText = computed(() => t(`status.${app.status.value}`))
 const statusColor = computed(() => ({ idle: 'bg-muted-foreground', generating: 'bg-warning animate-pulse', ready: 'bg-success', error: 'bg-destructive' })[app.status.value])
+const exportLine = computed(() => {
+  if (app.exportMessage.value) return app.exportMessage.value
+  return t(`export.status.${app.exportStatus.value}`)
+})
 </script>
 
 <template>
@@ -18,14 +24,14 @@ const statusColor = computed(() => ({ idle: 'bg-muted-foreground', generating: '
     </div>
     <div class="flex flex-wrap items-center gap-x-5 gap-y-1 px-3 py-1.5 font-mono">
       <span class="flex items-center gap-1.5"><i class="inline-block size-2 rounded-full" :class="statusColor" />{{ statusText }}</span>
-      <span title="Requested outer size">Size {{ f(app.params.width * app.params.scale) }} × {{ f(app.params.height * app.params.scale) }} mm</span>
-      <span>Wall {{ f(app.params.wallHeight) }} h / {{ f(app.params.wallThickness) }} t mm</span>
-      <span v-if="bbox">BBox {{ f(bbox.size[0]) }} × {{ f(bbox.size[1]) }} × {{ f(bbox.size[2]) }} mm</span>
+      <span :title="t('status.size')">{{ t('status.size') }} {{ f(app.params.width * app.params.scale) }} × {{ f(app.params.height * app.params.scale) }} mm</span>
+      <span>{{ t('status.wall') }} {{ f(app.params.wallHeight) }} {{ t('status.heightAbbr') }} / {{ f(app.params.wallThickness) }} {{ t('status.thicknessAbbr') }} mm</span>
+      <span v-if="bbox">{{ t('status.bbox') }} {{ f(bbox.size[0]) }} × {{ f(bbox.size[1]) }} × {{ f(bbox.size[2]) }} mm</span>
       <span v-if="v" :class="v.ok ? 'text-success' : 'text-destructive'">
-        Mesh {{ v.ok ? 'watertight ✓' : 'INVALID' }} · {{ v.triangles }} tris · {{ (v.volume / 1000).toFixed(2) }} cm³<template v-if="v.components > 1"> · {{ v.components }} parts</template>
+        Mesh {{ v.ok ? t('status.meshOk') : t('status.meshInvalid') }} · {{ v.triangles }} {{ t('status.tris') }} · {{ (v.volume / 1000).toFixed(2) }} cm³<template v-if="v.components > 1"> · {{ v.components }} {{ t('status.parts') }}</template>
       </span>
       <span class="ml-auto" :class="app.exportStatus.value === 'error' ? 'text-destructive' : 'text-muted-foreground'">
-        Export: {{ app.exportMessage.value || app.exportStatus.value }}
+        {{ t('status.export') }}: {{ exportLine }}
       </span>
     </div>
   </footer>

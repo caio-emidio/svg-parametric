@@ -4,8 +4,11 @@ import {
   DEFAULT_LID,
   DEFAULT_PARAMS,
   SAMPLES,
+  buildBambu3mf,
   cutFilename,
   cutLayersToSvg,
+  snapBottomToLayer,
+  threeMfFilename,
   defaultImageToSvgParams,
   lidStlFilename,
   meshToBinaryStl,
@@ -18,6 +21,7 @@ import {
   type TrayResult
 } from '~/engine'
 import type { ImageTraceWorkerResult } from '~/workers/image-trace.worker'
+import { useI18n } from '~/composables/useI18n'
 
 export type GenStatus = 'idle' | 'generating' | 'ready' | 'error'
 export type ExportStatus = 'idle' | 'exporting' | 'done' | 'error'
@@ -240,7 +244,7 @@ async function loadFile(file: File) {
   if (!/\.svg$/i.test(file.name) && file.type !== 'image/svg+xml') {
     parsed.value = null
     svgName.value = file.name
-    loadError.value = { code: 'UNSUPPORTED_FILE', message: 'Choose an SVG or a silhouette image (PNG, JPEG, WebP).' }
+    loadError.value = { code: 'UNSUPPORTED_FILE', message: useI18n().t('export.unsupportedFile') }
     return
   }
   traceStatus.value = 'idle'
@@ -284,10 +288,11 @@ async function retraceImage() {
 }
 
 function exportSvg() {
+  const { t } = useI18n()
   const text = generatedSvgText.value
   if (!text) {
     exportStatus.value = 'error'
-    exportMessage.value = 'No SVG to export.'
+    exportMessage.value = t('export.noSvg')
     return
   }
   exportStatus.value = 'exporting'
@@ -301,7 +306,7 @@ function exportSvg() {
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 10_000)
     exportStatus.value = 'done'
-    exportMessage.value = `Exported ${a.download}`
+    exportMessage.value = t('export.exportedSvg', { name: a.download })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -321,10 +326,11 @@ function downloadBlob(filename: string, blob: Blob) {
 }
 
 function exportStl() {
+  const { t } = useI18n()
   const r = result.value
   if (!r?.ok || !r.mesh || !r.validation) {
     exportStatus.value = 'error'
-    exportMessage.value = 'Export blocked: there is no valid model.'
+    exportMessage.value = t('export.noModel')
     return
   }
   exportStatus.value = 'exporting'
@@ -335,7 +341,11 @@ function exportStl() {
       new Blob([buf], { type: 'model/stl' })
     )
     exportStatus.value = 'done'
-    exportMessage.value = `Exported ${name} (${(buf.byteLength / 1024).toFixed(0)} KB, ${r.validation.triangles} triangles)`
+    exportMessage.value = t('export.exportedStl', {
+      name,
+      kb: (buf.byteLength / 1024).toFixed(0),
+      tris: r.validation.triangles
+    })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -343,10 +353,11 @@ function exportStl() {
 }
 
 function exportLidStl() {
+  const { t } = useI18n()
   const r = result.value
   if (!r?.lidMesh || !r.lidValidation?.ok) {
     exportStatus.value = 'error'
-    exportMessage.value = 'Export blocked: there is no valid lid.'
+    exportMessage.value = t('export.noLid')
     return
   }
   exportStatus.value = 'exporting'
@@ -358,7 +369,47 @@ function exportLidStl() {
       new Blob([buf], { type: 'model/stl' })
     )
     exportStatus.value = 'done'
-    exportMessage.value = `Exported ${name} (${(buf.byteLength / 1024).toFixed(0)} KB)`
+    exportMessage.value = t('export.exportedLidStl', { name, kb: (buf.byteLength / 1024).toFixed(0) })
+  } catch (e) {
+    exportStatus.value = 'error'
+    exportMessage.value = (e as Error).message
+  }
+}
+
+function exportBambu3mf() {
+  const { t } = useI18n()
+  const r = result.value
+  if (!r?.ok || !r.mesh || !r.validation || !r.bbox) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('export.noTray')
+    return
+  }
+  if (!params.lid.enabled || !r.lidMesh || !r.lidValidation?.ok || !r.lidBbox) {
+    exportStatus.value = 'error'
+    exportMessage.value = t('export.needLidFor3mf')
+    return
+  }
+  exportStatus.value = 'exporting'
+  try {
+    const layer = params.exportLayerHeight
+    const snapped = snapBottomToLayer(params.bottomThickness, layer)
+    const buf = buildBambu3mf({
+      tray: { mesh: r.mesh, validation: r.validation, name: 'Tray', bbox: r.bbox },
+      lid: { mesh: r.lidMesh, validation: r.lidValidation, name: 'Lid', bbox: r.lidBbox },
+      params: { bottomThickness: params.bottomThickness },
+      hints: { layerHeightMm: layer, elephantFootMm: params.exportElephantFoot },
+      projectTitle: svgName.value
+    })
+    const name = downloadBlob(
+      threeMfFilename(svgName.value),
+      new Blob([buf], { type: 'application/zip' })
+    )
+    exportStatus.value = 'done'
+    const layerCount = Math.max(1, Math.round(snapped / layer))
+    const bottomHint = snapped !== params.bottomThickness
+      ? t('export.bottomHint', { mm: snapped, layers: layerCount, layer })
+      : ''
+    exportMessage.value = t('export.exportedBambu', { name, bottomHint })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -366,10 +417,11 @@ function exportLidStl() {
 }
 
 function exportCutSvg() {
+  const { t } = useI18n()
   const r = result.value
   if (!r?.ok || !r.cutLayers?.length || !r.bbox) {
     exportStatus.value = 'error'
-    exportMessage.value = 'Export blocked: no cut geometry is available.'
+    exportMessage.value = t('export.noCutGeometry')
     return
   }
   exportStatus.value = 'exporting'
@@ -380,7 +432,11 @@ function exportCutSvg() {
       new Blob([text], { type: 'image/svg+xml' })
     )
     exportStatus.value = 'done'
-    exportMessage.value = `Exported ${name} (${r.cutLayers.length} layer(s), kerf ${params.cutKerf} mm)`
+    exportMessage.value = t('export.exportedCut', {
+      name,
+      layers: r.cutLayers.length,
+      kerf: params.cutKerf
+    })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message
@@ -394,6 +450,6 @@ export function useTrayApp() {
     traceStatus, traceWarnings, inputWarnings, generatedSvgText, fromImage, sourceRasterUrl, imageTraceParams, lastImageFile,
     previewPart,
     selectedShapes, aspect, setWidth, setHeight, loadFile, loadSample, clearSvg, resetParams, regenerate, retraceImage,
-    exportStl, exportLidStl, exportCutSvg, exportSvg
+    exportStl, exportLidStl, exportBambu3mf, exportCutSvg, exportSvg
   }
 }

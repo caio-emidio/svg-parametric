@@ -2,6 +2,17 @@ export * from './types'
 export { parseSvg } from './svg-parse'
 export { generateTray, validateParams } from './tray'
 export { buildCutLayers, cutFilename, cutLayersToSvg, type CutLayerInput } from './cut-export'
+export {
+  buildBambu3mf,
+  buildBambu3mfCombined,
+  buildBambuTrayLidZip,
+  buildSinglePlate3mf,
+  DEFAULT_BAMBU_HINTS,
+  snapBottomToLayer,
+  threeMfFilename,
+  type Bambu3mfInput,
+  type Bambu3mfPrintHints
+} from './bambu-3mf'
 export { validateMesh } from './mesh-validate'
 export { meshToBinaryStl, parseBinaryStl, stlFilename, lidStlFilename } from './stl'
 export { loadManifold } from './manifold-loader'

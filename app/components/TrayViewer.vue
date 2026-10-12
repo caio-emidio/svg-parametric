@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Box, Grid3x3, Home, Layers, Loader2, Upload } from 'lucide-vue-next'
 import Button from '~/components/ui/Button.vue'
 import { SAMPLES } from '~/engine'
 import { useTrayApp, type PreviewPart } from '~/composables/useTrayApp'
+import { useI18n } from '~/composables/useI18n'
 
 const app = useTrayApp()
-const previewOptions: { id: PreviewPart, label: string }[] = [
-  { id: 'tray', label: 'Tray' },
-  { id: 'lid', label: 'Lid' },
-  { id: 'both', label: 'Both' }
-]
+const { t, sampleName } = useI18n()
+const previewOptions = computed(() => (
+  (['tray', 'lid', 'both'] as PreviewPart[]).map(id => ({ id, label: t(`viewer.preview.${id}`) }))
+))
 const host = ref<HTMLDivElement>()
 const wireframe = ref(false)
 const labels = ref<{ text: string, x: number, y: number, show: boolean }[]>([
@@ -34,14 +34,15 @@ let center = new THREE.Vector3()
 let radius = 100
 let size = new THREE.Vector3()
 let min = new THREE.Vector3()
-const webglError = ref('')
+const webglFailed = ref(false)
+const webglError = computed(() => (webglFailed.value ? t('viewer.webglError') : ''))
 
 onMounted(() => {
   const el = host.value!
   try {
     renderer = new THREE.WebGLRenderer({ antialias: true })
   } catch (e) {
-    webglError.value = 'WebGL is not available in this browser, so the 3D preview cannot be shown.'
+    webglFailed.value = true
     return
   }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -258,10 +259,10 @@ onBeforeUnmount(() => {
     </template>
 
     <div class="absolute left-3 top-3 flex flex-wrap items-center gap-1 rounded-lg border bg-card/90 p-1 backdrop-blur">
-      <Button variant="ghost" size="sm" @click="preset('top')"><Layers class="size-3" />Top</Button>
-      <Button variant="ghost" size="sm" @click="preset('front')">Front</Button>
-      <Button variant="ghost" size="sm" @click="preset('side')">Side</Button>
-      <Button variant="ghost" size="sm" @click="preset('iso')"><Box class="size-3" />Iso</Button>
+      <Button variant="ghost" size="sm" @click="preset('top')"><Layers class="size-3" />{{ t('viewer.top') }}</Button>
+      <Button variant="ghost" size="sm" @click="preset('front')">{{ t('viewer.front') }}</Button>
+      <Button variant="ghost" size="sm" @click="preset('side')">{{ t('viewer.side') }}</Button>
+      <Button variant="ghost" size="sm" @click="preset('iso')"><Box class="size-3" />{{ t('viewer.iso') }}</Button>
       <span class="mx-1 h-4 w-px bg-border" />
       <template v-if="app.params.lid.enabled && app.result.value?.lidMesh">
         <span class="mx-1 h-4 w-px bg-border" />
@@ -274,28 +275,28 @@ onBeforeUnmount(() => {
         >{{ opt.label }}</Button>
       </template>
       <span class="mx-1 h-4 w-px bg-border" />
-      <Button :variant="wireframe ? 'default' : 'ghost'" size="sm" @click="wireframe = !wireframe"><Grid3x3 class="size-3" />Wireframe</Button>
-      <Button variant="ghost" size="sm" @click="preset('iso')"><Home class="size-3" />Reset camera</Button>
+      <Button :variant="wireframe ? 'default' : 'ghost'" size="sm" @click="wireframe = !wireframe"><Grid3x3 class="size-3" />{{ t('viewer.wireframe') }}</Button>
+      <Button variant="ghost" size="sm" @click="preset('iso')"><Home class="size-3" />{{ t('viewer.resetCamera') }}</Button>
     </div>
 
     <div v-if="app.status.value === 'generating'" class="absolute right-3 top-3 flex items-center gap-2 rounded-md border bg-card/90 px-2 py-1 text-xs">
-      <Loader2 class="size-3.5 animate-spin text-primary" />Generating geometry…
+      <Loader2 class="size-3.5 animate-spin text-primary" />{{ t('viewer.generating') }}
     </div>
 
     <div v-if="!app.parsed.value" class="absolute inset-0 grid place-items-center bg-background/70 p-6 text-center">
       <div class="max-w-sm space-y-3">
         <Upload class="mx-auto size-8 text-primary" />
-        <h2 class="text-base font-semibold">Turn any SVG into a printable tray</h2>
-        <p class="text-xs text-muted-foreground">Upload a silhouette (heart, star, logo, letter…) or start with an example. The hollow tray is built with true polygon offsets, previewed in 3D and exported as a watertight STL.</p>
+        <h2 class="text-base font-semibold">{{ t('viewer.emptyTitle') }}</h2>
+        <p class="text-xs text-muted-foreground">{{ t('viewer.emptyBody') }}</p>
         <div class="flex flex-wrap justify-center gap-2">
-          <Button v-for="s in SAMPLES" :key="s.id" variant="secondary" size="sm" @click="app.loadSample(s.id)">{{ s.name }}</Button>
+          <Button v-for="s in SAMPLES" :key="s.id" variant="secondary" size="sm" @click="app.loadSample(s.id)">{{ sampleName(s.id) }}</Button>
         </div>
       </div>
     </div>
 
     <div v-else-if="app.status.value === 'error' && !app.result.value?.mesh" class="absolute inset-0 grid place-items-center p-6 text-center">
       <div class="max-w-sm rounded-lg border border-destructive/50 bg-card/95 p-4 text-xs" role="alert">
-        <p class="mb-1 font-semibold text-destructive">Can't generate a valid tray</p>
+        <p class="mb-1 font-semibold text-destructive">{{ t('viewer.errorTitle') }}</p>
         <p v-for="e in app.result.value?.errors ?? (app.loadError.value ? [app.loadError.value] : [])" :key="e.code">{{ e.message }}</p>
       </div>
     </div>

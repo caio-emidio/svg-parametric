@@ -115,7 +115,15 @@ export const messages: Record<Locale, Dict> = {
       heart: 'Heart',
       star: 'Star',
       'rounded-rect': 'Rounded rectangle',
-      ring: 'Ring (hole)'
+      ring: 'Ring (hole)',
+      cloud: 'Cloud',
+      circle: 'Circle',
+      'box-line': 'Box with line',
+      triangle: 'Triangle',
+      hexagon: 'Hexagon',
+      plus: 'Plus',
+      arrow: 'Arrow',
+      house: 'House'
     },
     viewer: {
       webglError: 'WebGL is not available in this browser, so the 3D preview cannot be shown.',
@@ -296,7 +304,15 @@ export const messages: Record<Locale, Dict> = {
       heart: 'Coração',
       star: 'Estrela',
       'rounded-rect': 'Retângulo arredondado',
-      ring: 'Anel (furo)'
+      ring: 'Anel (furo)',
+      cloud: 'Nuvem',
+      circle: 'Círculo',
+      'box-line': 'Caixa com reta',
+      triangle: 'Triângulo',
+      hexagon: 'Hexágono',
+      plus: 'Mais (+)',
+      arrow: 'Seta',
+      house: 'Casa'
     },
     viewer: {
       webglError: 'WebGL não está disponível neste navegador; a visualização 3D não pode ser exibida.',

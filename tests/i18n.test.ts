@@ -19,7 +19,10 @@ describe('i18n messages', () => {
   })
 
   it('sample ids resolve', () => {
-    const ids = ['heart', 'star', 'rounded-rect', 'ring'] as const
+    const ids = [
+      'heart', 'star', 'rounded-rect', 'ring',
+      'cloud', 'circle', 'box-line', 'triangle', 'hexagon', 'plus', 'arrow', 'house'
+    ] as const
     for (const loc of ['en', 'pt-BR'] as Locale[]) {
       for (const id of ids) {
         const v = (messages[loc].sample as Record<string, string>)[id]

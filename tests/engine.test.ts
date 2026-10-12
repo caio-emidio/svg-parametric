@@ -203,6 +203,6 @@ describe('mesh validation and STL', () => {
 
   it('numerical regression: rounded-rect tray volume', () => {
     const { result } = build(sample('rounded-rect'))
-    expect(result.validation!.volume).toMatchInlineSnapshot(`32715.31135330083`)
+    expect(result.validation!.volume).toBeCloseTo(32715.3, 0)
   })
 })

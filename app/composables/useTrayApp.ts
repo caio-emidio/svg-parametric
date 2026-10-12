@@ -7,6 +7,7 @@ import {
   buildBambu3mf,
   cutFilename,
   cutLayersToSvg,
+  type Svg2dExportStyle,
   snapBottomToLayer,
   threeMfFilename,
   defaultImageToSvgParams,
@@ -416,7 +417,7 @@ function exportBambu3mf() {
   }
 }
 
-function exportCutSvg() {
+function exportCutSvg(style: Svg2dExportStyle) {
   const { t } = useI18n()
   const r = result.value
   if (!r?.ok || !r.cutLayers?.length || !r.bbox) {
@@ -426,17 +427,19 @@ function exportCutSvg() {
   }
   exportStatus.value = 'exporting'
   try {
-    const text = cutLayersToSvg(r.cutLayers, { width: r.bbox.size[0], height: r.bbox.size[1] })
+    const text = cutLayersToSvg(r.cutLayers, { width: r.bbox.size[0], height: r.bbox.size[1] }, style)
     const name = downloadBlob(
-      cutFilename(svgName.value, r.bbox.size[0], r.bbox.size[1]),
+      cutFilename(svgName.value, r.bbox.size[0], r.bbox.size[1], style),
       new Blob([text], { type: 'image/svg+xml' })
     )
     exportStatus.value = 'done'
-    exportMessage.value = t('export.exportedCut', {
-      name,
-      layers: r.cutLayers.length,
-      kerf: params.cutKerf
-    })
+    exportMessage.value = style === 'filled'
+      ? t('export.exportedFilled', { name })
+      : t('export.exportedCut', {
+          name,
+          layers: r.cutLayers.length,
+          kerf: params.cutKerf
+        })
   } catch (e) {
     exportStatus.value = 'error'
     exportMessage.value = (e as Error).message

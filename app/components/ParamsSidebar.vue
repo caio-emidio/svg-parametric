@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { Download, RotateCcw, Play, Loader2 } from 'lucide-vue-next'
 import Button from '~/components/ui/Button.vue'
 import Switch from '~/components/ui/Switch.vue'
@@ -6,6 +7,7 @@ import Label from '~/components/ui/Label.vue'
 import NumberField from '~/components/NumberField.vue'
 import SvgInput from '~/components/SvgInput.vue'
 import LocaleSwitch from '~/components/LocaleSwitch.vue'
+import ExportSvg2dDialog from '~/components/ExportSvg2dDialog.vue'
 import { useTrayApp } from '~/composables/useTrayApp'
 import { useI18n } from '~/composables/useI18n'
 
@@ -14,6 +16,7 @@ const { t } = useI18n()
 const p = app.params
 const d = p.dividers
 const lid = p.lid
+const exportSvg2dOpen = ref(false)
 </script>
 
 <template>
@@ -120,10 +123,15 @@ const lid = p.lid
           variant="outline"
           :disabled="!app.result.value?.ok || app.status.value === 'generating'"
           data-testid="export-cut"
-          @click="app.exportCutSvg"
+          @click="exportSvg2dOpen = true"
         >
-          <Download class="size-3.5" />{{ t('action.exportCutSvg') }}
+          <Download class="size-3.5" />{{ t('action.exportSvg2d') }}
         </Button>
+        <ExportSvg2dDialog
+          :open="exportSvg2dOpen"
+          @close="exportSvg2dOpen = false"
+          @export="app.exportCutSvg"
+        />
         <Button
           v-if="lid.enabled"
           class="w-full"

@@ -63,6 +63,7 @@ export const messages: Record<Locale, Dict> = {
       exportTrayStl: 'Export tray STL',
       exportLidStl: 'Export lid STL',
       exportCutSvg: 'Export SVG (2D cut)',
+      exportSvg2d: 'Export SVG (2D)',
       exportBambuZip: 'Export Bambu ZIP (tray + lid)'
     },
     input: {
@@ -141,9 +142,19 @@ export const messages: Record<Locale, Dict> = {
       exportedLidStl: 'Exported {name} ({kb} KB)',
       exportedSvg: 'Exported {name}',
       exportedCut: 'Exported {name} ({layers} layer(s), kerf {kerf} mm)',
+      exportedFilled: 'Exported {name} (filled silhouette)',
       exportedBambu: 'Exported {name}: open *_tray.3mf, add plate 2, import *_lid.3mf. See LEIA-ME-Bambu.txt.{bottomHint}',
       bottomHint: ' Set bottom thickness to {mm} mm ({layers}× {layer} mm layers) if you see a line at the floor height.',
       unsupportedFile: 'Choose an SVG or a silhouette image (PNG, JPEG, WebP).'
+    },
+    exportSvg2d: {
+      title: 'Export 2D SVG',
+      subtitle: 'Choose outline strokes for laser/CNC cutting, or a filled shape for print and other uses.',
+      strokeTitle: 'Outline (cut lines)',
+      strokeHint: 'Separate stroke paths per layer, with kerf offset.',
+      filledTitle: 'Filled silhouette',
+      filledHint: 'Solid fill with holes (even-odd); good for print, vinyl, or flat plates.',
+      cancel: 'Cancel'
     }
   },
   'pt-BR': {
@@ -201,6 +212,7 @@ export const messages: Record<Locale, Dict> = {
       exportTrayStl: 'Exportar STL da bandeja',
       exportLidStl: 'Exportar STL da tampa',
       exportCutSvg: 'Exportar SVG (corte 2D)',
+      exportSvg2d: 'Exportar SVG (2D)',
       exportBambuZip: 'Exportar ZIP Bambu (bandeja + tampa)'
     },
     input: {
@@ -279,9 +291,19 @@ export const messages: Record<Locale, Dict> = {
       exportedLidStl: 'Exportado {name} ({kb} KB)',
       exportedSvg: 'Exportado {name}',
       exportedCut: 'Exportado {name} ({layers} camada(s), kerf {kerf} mm)',
+      exportedFilled: 'Exportado {name} (silhueta preenchida)',
       exportedBambu: 'Exportado {name}: abra *_tray.3mf, adicione placa 2, importe *_lid.3mf. Veja LEIA-ME-Bambu.txt.{bottomHint}',
       bottomHint: ' Ajuste a espessura do fundo para {mm} mm ({layers}× {layer} mm) se aparecer linha na altura do fundo.',
       unsupportedFile: 'Escolha um SVG ou imagem de silhueta (PNG, JPEG, WebP).'
+    },
+    exportSvg2d: {
+      title: 'Exportar SVG 2D',
+      subtitle: 'Contorno para laser/CNC ou forma preenchida para impressão e outros usos.',
+      strokeTitle: 'Contorno (linhas de corte)',
+      strokeHint: 'Traços por camada, com compensação de kerf.',
+      filledTitle: 'Silhueta preenchida',
+      filledHint: 'Preenchimento sólido com furos (even-odd); ideal para impressão, vinil ou chapas planas.',
+      cancel: 'Cancelar'
     }
   }
 }

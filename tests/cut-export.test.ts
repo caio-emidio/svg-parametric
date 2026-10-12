@@ -15,6 +15,9 @@ describe('cut export', () => {
     expect(svg).toContain('data-layer="outer"')
     expect(svg).toContain('data-layer="cavity"')
     expect(svg).toMatch(/<path d="M /)
+    const filled = cutLayersToSvg(result.cutLayers!, { width: result.bbox!.size[0], height: result.bbox!.size[1] }, 'filled')
+    expect(filled).toContain('fill-rule="evenodd"')
+    expect(filled).toContain('data-style="filled"')
   })
 
   it('includes divider layers when compartments are enabled', () => {

@@ -48,8 +48,39 @@ function contourToPathD(c: Contour): string {
   return `${d} Z`
 }
 
+/** Stroke = cut lines (laser/CNC). Filled = solid silhouette with holes (print, vinyl, etc.). */
+export type Svg2dExportStyle = 'stroke' | 'filled'
+
+function pathsForStyle(layers: CutLayer[], style: Svg2dExportStyle): string[] {
+  if (style === 'stroke') {
+    const paths: string[] = []
+    for (const layer of layers) {
+      for (const c of layer.contours) {
+        const d = contourToPathD(c)
+        if (d) paths.push(`<path d="${d}" fill="none" stroke="${layer.stroke}" stroke-width="0.2" data-layer="${layer.id}"/>`)
+      }
+    }
+    return paths
+  }
+  const paths: string[] = []
+  const outer = layers.find(l => l.id === 'outer')
+  const cavity = layers.find(l => l.id === 'cavity')
+  let d = ''
+  if (outer) for (const c of outer.contours) d += contourToPathD(c)
+  if (cavity) for (const c of cavity.contours) d += contourToPathD(c)
+  if (d) paths.push(`<path d="${d}" fill="#000000" fill-rule="evenodd" data-style="filled"/>`)
+  for (const layer of layers) {
+    if (!layer.id.startsWith('divider')) continue
+    for (const c of layer.contours) {
+      const pd = contourToPathD(c)
+      if (pd) paths.push(`<path d="${pd}" fill="none" stroke="${layer.stroke}" stroke-width="0.2" data-layer="${layer.id}"/>`)
+    }
+  }
+  return paths
+}
+
 /** Serialises cut layers to an SVG document (mm user units, y-up matching the engine). */
-export function cutLayersToSvg(layers: CutLayer[], size: { width: number, height: number }): string {
+export function cutLayersToSvg(layers: CutLayer[], size: { width: number, height: number }, style: Svg2dExportStyle = 'stroke'): string {
   let minX = 0, minY = 0, maxX = size.width, maxY = size.height
   for (const layer of layers) {
     for (const c of layer.contours) for (const [x, y] of c) {
@@ -60,13 +91,7 @@ export function cutLayersToSvg(layers: CutLayer[], size: { width: number, height
   const pad = 2
   const w = maxX - minX + pad * 2
   const h = maxY - minY + pad * 2
-  const paths: string[] = []
-  for (const layer of layers) {
-    for (const c of layer.contours) {
-      const d = contourToPathD(c)
-      if (d) paths.push(`<path d="${d}" fill="none" stroke="${layer.stroke}" stroke-width="0.2" data-layer="${layer.id}"/>`)
-    }
-  }
+  const paths = pathsForStyle(layers, style)
   // Flip y for SVG (y down): transform group
   const tx = -minX + pad
   const ty = maxY + pad
@@ -80,7 +105,8 @@ export function cutLayersToSvg(layers: CutLayer[], size: { width: number, height
   ].join('\n')
 }
 
-export function cutFilename(svgName: string, width: number, height: number): string {
+export function cutFilename(svgName: string, width: number, height: number, style: Svg2dExportStyle = 'stroke'): string {
   const base = svgName.replace(/\.svg$/i, '').replace(/[^\w.-]+/g, '_') || 'tray'
-  return `${base}_cut_${Math.round(width)}x${Math.round(height)}mm.svg`
+  const tag = style === 'filled' ? 'filled' : 'cut'
+  return `${base}_${tag}_${Math.round(width)}x${Math.round(height)}mm.svg`
 }

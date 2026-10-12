@@ -1,7 +1,7 @@
 export * from './types'
 export { parseSvg } from './svg-parse'
 export { generateTray, validateParams } from './tray'
-export { buildCutLayers, cutFilename, cutLayersToSvg, type CutLayerInput } from './cut-export'
+export { buildCutLayers, cutFilename, cutLayersToSvg, type CutLayerInput, type Svg2dExportStyle } from './cut-export'
 export {
   buildBambu3mf,
   buildBambu3mfCombined,
